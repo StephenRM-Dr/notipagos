@@ -1,0 +1,3 @@
+id,fecha_recepcion,hora_recepcion,emisor,monto,referencia,mensaje_completo,estado
+1,15/01/2026,01:46 PM,JESUS SEBASTIAN SARMIENTO PEREZ,"20,00",004806341791,"Recibiste un PagomovilBDV de JESUS SEBASTIAN SARMIENTO PEREZ por Bs.20,00  bajo el numero de operacion 004806341791",CANJEADO
+2,15/01/2026,01:46 PM,JESUS SEBASTIAN SARMIENTO PEREZ,"10,00",004806370898,"Recibiste un PagomóvilBDV de JESUS SEBASTIAN SARMIENTO PEREZ por Bs.10,00  bajo el número de operación 004806370898",CANJEADO
