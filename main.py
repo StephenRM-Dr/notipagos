@@ -1,17 +1,17 @@
 import psycopg2
-from psycopg2 import extras
 import re
 import json
 import os
-from flask import Flask, request, jsonify, render_template_string, redirect, url_for
+from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session
 from datetime import datetime
 
-# --- SOLUCIÓN AL ERROR DE UNICODE ---
+# --- SOLUCIÓN AL ERROR DE UNICODE EN WINDOWS ---
 os.environ['PGCLIENTENCODING'] = 'utf-8'
 
 app = Flask(__name__)
+app.secret_key = "clave_secreta_sistemas_mv_2024" 
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN DE BASE DE DATOS ---
 DB_CONFIG = {
     "host": "localhost",
     "database": "pagos",
@@ -19,7 +19,7 @@ DB_CONFIG = {
     "password": "sistemasmv",
     "port": "5432"
 }
-ADMIN_PASSWORD = "admin123"  # Cambia esto por tu seguridad
+ADMIN_PASSWORD = "admin123"
 
 def get_db_connection():
     return psycopg2.connect(**DB_CONFIG, client_encoding='utf8')
@@ -46,115 +46,94 @@ def inicializar_db():
         conn.close()
         print("✅ Base de Datos Postgres lista.")
     except Exception as e:
-        print(f"❌ Error DB: {e}")
+        print(f"❌ Error al inicializar DB: {e}")
 
 def limpiar_mensaje_bdv(texto):
     texto_limpio = texto.replace('"', '').replace('\n', ' ').strip()
     regex_emisor = r"de\s+(.*?)\s+por"
     regex_monto = r"Bs\.?\s?([\d.]+,\d{2})"
     regex_ref = r"(?:operaci[óo]n\s+)(\d+)"
-    
     emisor = re.search(regex_emisor, texto_limpio)
     monto = re.search(regex_monto, texto_limpio)
     ref = re.search(regex_ref, texto_limpio)
-    
     referencia_final = ref.group(1) if ref else (re.findall(r"\d{6,}", texto_limpio)[-1] if re.findall(r"\d{6,}", texto_limpio) else None)
-    
-    return {
-        "emisor": emisor.group(1).strip() if emisor else "Desconocido",
-        "monto": monto.group(1) if monto else "0,00",
-        "referencia": referencia_final
-    }
+    return {"emisor": emisor.group(1).strip() if emisor else "Desconocido", "monto": monto.group(1) if monto else "0,00", "referencia": referencia_final}
 
-# --- RUTAS DE WEBHOOK ---
-@app.route('/webhook-bdv', methods=['POST'])
-def webhook():
-    raw_data = request.get_data(as_text=True).strip()
-    mensaje = None
-    match = re.search(r'"mensaje":\s*"(.*)"', raw_data, re.DOTALL)
-    
-    if match:
-        mensaje = match.group(1).replace('\\"', '"').replace('\"', '"')
-    else:
-        try:
-            data = json.loads(raw_data)
-            mensaje = data.get("mensaje", "")
-        except:
-            return jsonify({"status": "error", "reason": "invalid_format"}), 200
+# --- ESTILOS CSS ---
+CSS_COMUN = '''
+:root { --primary: #004481; --secondary: #f4f7f9; --accent: #00b1ea; --danger: #d9534f; --success: #28a745; --warning: #ffc107; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secondary); margin: 0; color: #333; }
+.btn { border: none; border-radius: 6px; padding: 10px 20px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-block; text-align: center; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-danger { background: var(--danger); color: white; }
+.card { background: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 25px; }
+'''
 
-    if not mensaje or "{not_text_big}" in mensaje:
-        return jsonify({"status": "ignored"}), 200
+# --- VISTAS HTML (CORREGIDAS SIN F-STRINGS) ---
 
-    try:
-        datos = limpiar_mensaje_bdv(mensaje)
-        if not datos['referencia']: return jsonify({"status": "no_ref"}), 200
+HTML_LOGIN = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Sistemas MV</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>''' + CSS_COMUN + '''
+    body { display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .login-card { width: 100%; max-width: 350px; text-align: center; }
+    input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }</style>
+</head>
+<body>
+    <div class="card login-card">
+        <h2 style="color: var(--primary)">Sistemas MV</h2>
+        {% if error %}<p style="color: var(--danger)">{{ error }}</p>{% endif %}
+        <form method="POST">
+            <input type="password" name="password" placeholder="Contraseña Maestra" required autofocus>
+            <button type="submit" class="btn btn-primary" style="width: 100%">Entrar al Panel</button>
+        </form>
+    </div>
+</body>
+</html>
+'''
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, mensaje_completo) 
-            VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (referencia) DO NOTHING
-        ''', (datetime.now().strftime("%d/%m/%Y"), datetime.now().strftime("%I:%M %p"), 
-              datos['emisor'], datos['monto'], datos['referencia'], mensaje))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        return jsonify({"status": "error"}), 200
-
-# --- PORTALES (HTML) ---
 HTML_PORTAL = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Verificador Oficial</title>
+    <title>Verificador de Pagos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background: #eef2f7; color: #333; }
-        .nav-bar { margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; }
-        .btn-nav { background: #6c757d; color: white; padding: 8px 15px; border-radius: 5px; text-decoration: none; font-size: 14px; font-weight: bold; }
-        .btn-admin { background: #004481; }
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 450px; margin: auto; }
-        h2 { color: #004481; margin-top: 10px; }
-        input { width: 90%; padding: 12px; margin: 10px 0; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; text-align: center; }
-        .btn-validar { width: 95%; padding: 12px; background: #004481; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
-        .alert { margin-top: 25px; padding: 20px; border-radius: 10px; font-weight: bold; }
-        .success { background: #d4edda; color: #155724; }
-        .warning { background: #fff3cd; color: #856404; }
-        .danger { background: #f8d7da; color: #721c24; }
-        .info-pago { font-size: 0.9em; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; text-align: left; }
-        .fecha-canje { color: #d9534f; font-weight: bold; display: block; margin-top: 5px; }
-    </style>
+    <style>''' + CSS_COMUN + '''
+    .wrapper { max-width: 500px; margin: 40px auto; padding: 0 15px; }
+    .nav-bar { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    .input-ref { width: 100%; padding: 15px; font-size: 24px; border: 2px solid #eee; border-radius: 10px; text-align: center; margin-bottom: 15px; }
+    .alert { border-radius: 10px; padding: 20px; margin-top: 20px; text-align: left; }
+    .success { background: #e7f4e8; color: #1e4620; border-left: 5px solid var(--success); }
+    .warning { background: #fff3cd; color: #856404; border-left: 5px solid var(--warning); }
+    .danger { background: #fdecea; color: #611a15; border-left: 5px solid var(--danger); }</style>
 </head>
 <body>
-    <div class="nav-bar">
-        <a href="/" class="btn-nav">🔄 Recargar Inicio</a>
-        <a href="/admin" class="btn-nav btn-admin">⚙️ Panel Admin</a>
-    </div>
-
-    <div class="card">
-        <h2>Verificador de Pagos</h2>
-        <form method="POST" action="/verificar">
-            <input type="text" name="ref" placeholder="Últimos 6 dígitos" required autocomplete="off">
-            <button type="submit" class="btn-validar">VALIDAR PAGO</button>
-        </form>
-
-        {% if resultado %}
-            <div class="alert {{ resultado.clase }}">
-                {{ resultado.mensaje }}
-                {% if resultado.datos %}
-                    <div class="info-pago">
-                        👤 <b>Emisor:</b> {{ resultado.datos[0] }}<br>
-                        💰 <b>Monto:</b> Bs. {{ resultado.datos[1] }}<br>
-                        🔢 <b>Ref:</b> {{ resultado.datos[3] }}
-                        {% if resultado.datos[4] %}
-                            <span class="fecha-canje">📌 Canjeado el: {{ resultado.datos[4] }}</span>
-                        {% endif %}
-                    </div>
-                {% endif %}
-            </div>
-        {% endif %}
+    <div class="wrapper">
+        <div class="nav-bar">
+            <a href="/" class="btn" style="background: #ddd; color: #333">🔄 Recargar</a>
+            <a href="/admin" class="btn btn-primary">⚙️ Panel Admin</a>
+        </div>
+        <div class="card" style="text-align: center;">
+            <h2 style="color: var(--primary)">Validar Pago</h2>
+            <form method="POST" action="/verificar">
+                <input type="text" name="ref" class="input-ref" placeholder="000000" required autocomplete="off">
+                <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 18px;">VERIFICAR AHORA</button>
+            </form>
+            {% if resultado %}
+                <div class="alert {{ resultado.clase }}">
+                    <h3 style="margin: 0 0 10px 0;">{{ resultado.mensaje }}</h3>
+                    {% if resultado.datos %}
+                        <b>👤 Emisor:</b> {{ resultado.datos[0] }}<br>
+                        <b>💰 Monto:</b> Bs. {{ resultado.datos[1] }}<br>
+                        <b>🔢 Ref:</b> {{ resultado.datos[3] }}
+                        {% if resultado.datos[4] %}<br><span style="color: var(--danger)">📌 <b>Canjeado:</b> {{ resultado.datos[4] }}</span>{% endif %}
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
     </div>
 </body>
 </html>
@@ -166,48 +145,95 @@ HTML_ADMIN = '''
 <head>
     <title>Admin - Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: sans-serif; background: #f4f7f9; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
-        th { background: #004481; color: white; }
-        .status { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
-        .LIBRE { background: #d4edda; color: #155724; }
-        .CANJEADO { background: #f8d7da; color: #721c24; }
-        .resumen { margin-top: 20px; padding: 15px; background: #eee; border-radius: 8px; text-align: right; font-size: 1.2em; }
-    </style>
+    <style>''' + CSS_COMUN + '''
+    .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+    .search-bar { background: white; padding: 15px; border-radius: 10px; display: flex; gap: 10px; margin-bottom: 20px; }
+    .search-bar input { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
+    th { background: var(--primary); color: white; padding: 15px; text-align: left; }
+    td { padding: 12px 15px; border-bottom: 1px solid #eee; }
+    .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+    .LIBRE { background: #e7f4e8; color: #2e7d32; }
+    .CANJEADO { background: #fdecea; color: #c62828; }
+    .resumen { background: var(--primary); color: white; padding: 20px; border-radius: 10px; margin-top: 20px; text-align: right; }</style>
 </head>
 <body>
     <div class="container">
-        <h2>Panel Administrativo <small><a href="/">Verificador</a></small></h2>
-        <table>
-            <tr>
-                <th>Fecha</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acción</th>
-            </tr>
-            {% for p in pagos %}
-            <tr>
-                <td>{{p[1]}}</td><td>{{p[3]}}</td><td>{{p[4]}}</td><td>{{p[5]}}</td>
-                <td><span class="status {{p[7]}}">{{p[7]}}</span></td>
-                <td>
-                    {% if p[7] == 'CANJEADO' %}
-                    <form method="POST" action="/admin/liberar" style="display:flex; gap:5px;">
-                        <input type="hidden" name="ref" value="{{p[5]}}">
-                        <input type="password" name="pw" placeholder="PIN" style="width:50px" required>
-                        <button type="submit" style="background:orange; border:none; border-radius:4px; cursor:pointer">Liberar</button>
-                    </form>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
-        <div class="resumen">
-            <b>Total Recaudado (Hoy):</b> Bs. {{ total }}
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1 style="color: var(--primary)">Panel Administrativo</h1>
+            <div><a href="/" class="btn" style="background:#eee;">Verificador</a> <a href="/logout" class="btn btn-danger">Salir</a></div>
         </div>
+        <form method="GET" action="/admin" class="search-bar">
+            <input type="text" name="q" placeholder="Buscar por emisor o referencia..." value="{{ query }}">
+            <button type="submit" class="btn btn-primary">🔍 Buscar</button>
+            {% if query %}<a href="/admin" style="padding: 10px; color: #666;">Limpiar</a>{% endif %}
+        </form>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead><tr><th>Fecha</th><th>Emisor</th><th>Monto</th><th>Ref</th><th>Estado</th><th>Acción</th></tr></thead>
+                <tbody>
+                    {% for p in pagos %}
+                    <tr>
+                        <td>{{p[1]}}<br><small style="color:#999">{{p[2]}}</small></td>
+                        <td>{{p[3]}}</td>
+                        <td style="font-weight: bold;">Bs. {{p[4]}}</td>
+                        <td><code>{{p[5]}}</code></td>
+                        <td><span class="badge {{p[7]}}">{{p[7]}}</span><br><small>{{p[8] if p[8] else ""}}</small></td>
+                        <td>
+                            {% if p[7] == 'CANJEADO' %}
+                            <form method="POST" action="/admin/liberar" style="display: flex; gap: 4px;">
+                                <input type="hidden" name="ref" value="{{p[5]}}">
+                                <input type="password" name="pw" placeholder="PIN" style="width: 50px;" required>
+                                <button type="submit" class="btn" style="background: var(--warning); padding: 5px; font-size: 11px;">Liberar</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="resumen"><b>Suma Total:</b> Bs. {{ total }}</div>
     </div>
 </body>
 </html>
 '''
+
+# --- RUTAS DE LA APLICACIÓN ---
+
+@app.route('/webhook-bdv', methods=['POST'])
+def webhook():
+    raw_data = request.get_data(as_text=True).strip()
+    match = re.search(r'"mensaje":\s*"(.*)"', raw_data, re.DOTALL)
+    mensaje = match.group(1).replace('\\"', '"').replace('\"', '"') if match else None
+    if not mensaje:
+        try: mensaje = json.loads(raw_data).get("mensaje", "")
+        except: return jsonify({"status": "error"}), 200
+    if not mensaje or "{not_text_big}" in mensaje: return jsonify({"status": "ignored"}), 200
+    try:
+        datos = limpiar_mensaje_bdv(mensaje)
+        if not datos['referencia']: return jsonify({"status": "no_ref"}), 200
+        conn = get_db_connection(); cursor = conn.cursor()
+        cursor.execute("INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, mensaje_completo) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (referencia) DO NOTHING",
+            (datetime.now().strftime("%d/%m/%Y"), datetime.now().strftime("%I:%M %p"), datos['emisor'], datos['monto'], datos['referencia'], mensaje))
+        conn.commit(); cursor.close(); conn.close()
+        return jsonify({"status": "success"}), 200
+    except: return jsonify({"status": "error"}), 200
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        if request.form.get('password') == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            return redirect(url_for('admin'))
+        error = "Contraseña incorrecta"
+    return render_template_string(HTML_LOGIN, error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
 
 @app.route('/')
 def index():
@@ -218,8 +244,7 @@ def verificar():
     busqueda = request.form.get('ref', '').strip()
     if len(busqueda) < 4: return render_template_string(HTML_PORTAL, resultado={"clase": "danger", "mensaje": "❌ Mínimo 4 dígitos"})
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        conn = get_db_connection(); cursor = conn.cursor()
         cursor.execute("SELECT emisor, monto, estado, referencia, fecha_canje FROM pagos WHERE referencia LIKE %s ORDER BY id DESC LIMIT 1", ('%' + busqueda,))
         pago = cursor.fetchone()
         if not pago: res = {"clase": "danger", "mensaje": "❌ PAGO NO ENCONTRADO"}
@@ -236,25 +261,25 @@ def verificar():
 
 @app.route('/admin')
 def admin():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM pagos ORDER BY id DESC")
-    pagos = cursor.fetchall()
-    
-    # Cálculo de total del día (opcionalmente puedes filtrar por fecha actual en el SQL)
-    total = 0.0
+    if not session.get('logged_in'): return redirect(url_for('login'))
+    query = request.args.get('q', '').strip()
+    conn = get_db_connection(); cursor = conn.cursor()
+    if query:
+        search = f"%{query}%"
+        cursor.execute("SELECT * FROM pagos WHERE emisor ILIKE %s OR referencia LIKE %s ORDER BY id DESC", (search, search))
+    else:
+        cursor.execute("SELECT * FROM pagos ORDER BY id DESC")
+    pagos = cursor.fetchall(); total = 0.0
     for p in pagos:
-        try:
-            # Limpiamos el monto (ej: "1.250,50" -> 1250.50)
-            valor = float(p[4].replace('.', '').replace(',', '.'))
-            total += valor
+        try: total += float(p[4].replace('.', '').replace(',', '.'))
         except: pass
-    
     cursor.close(); conn.close()
-    return render_template_string(HTML_ADMIN, pagos=pagos, total=f"{total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+    total_f = f"{total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    return render_template_string(HTML_ADMIN, pagos=pagos, total=total_f, query=query)
 
 @app.route('/admin/liberar', methods=['POST'])
 def liberar():
+    if not session.get('logged_in'): return redirect(url_for('login'))
     if request.form.get('pw') == ADMIN_PASSWORD:
         conn = get_db_connection(); cursor = conn.cursor()
         cursor.execute("UPDATE pagos SET estado = 'LIBRE', fecha_canje = NULL WHERE referencia = %s", (request.form.get('ref'),))
