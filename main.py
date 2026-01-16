@@ -150,19 +150,47 @@ def webhook():
 @app.route('/verificar', methods=['POST'])
 def verificar():
     busqueda = request.form.get('ref', '').strip()
-    if len(busqueda) < 4: return render_template_string(HTML_PORTAL, resultado={"clase": "danger", "mensaje": "❌ Mínimo 4 dígitos"})
+    if len(busqueda) < 4: 
+        return render_template_string(HTML_PORTAL, resultado={"clase": "danger", "mensaje": "❌ Mínimo 4 dígitos"})
+    
+    conn = None
     try:
-        conn = get_db_connection(); cursor = conn.cursor()
-        cursor.execute("SELECT emisor, monto, estado, referencia FROM pagos WHERE referencia LIKE %s ORDER BY id DESC LIMIT 1", ('%' + busqueda,))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 1. BUSCAR Y BLOQUEAR la fila (FOR UPDATE) para evitar que otra consulta la toque
+        # Buscamos la referencia exacta o que coincida con los últimos dígitos
+        cursor.execute("""
+            SELECT id, emisor, monto, estado, referencia 
+            FROM pagos 
+            WHERE referencia LIKE %s 
+            ORDER BY id DESC 
+            LIMIT 1 
+            FOR UPDATE
+        """, ('%' + busqueda,))
+        
         pago = cursor.fetchone()
-        if not pago: res = {"clase": "danger", "mensaje": "❌ PAGO NO ENCONTRADO"}
-        elif pago[2] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA FUE USADO", "datos": pago}
+        
+        if not pago:
+            res = {"clase": "danger", "mensaje": "❌ PAGO NO ENCONTRADO"}
+        elif pago[3] == 'CANJEADO':
+            res = {"clase": "warning", "mensaje": "⚠️ YA FUE USADO", "datos": [pago[1], pago[2], pago[3], pago[4]]}
         else:
+            # 2. MARCAR COMO CANJEADO inmediatamente dentro de la misma transacción bloqueada
             ahora = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
-            cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE referencia = %s", (ahora, pago[3]))
-            conn.commit(); res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO", "datos": pago}
-        cursor.close(); conn.close()
-    except Exception as e: res = {"clase": "danger", "mensaje": f"❌ Error: {e}"}
+            cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (ahora, pago[0]))
+            
+            # 3. GUARDAR CAMBIOS (COMMIT) y liberar el bloqueo
+            conn.commit()
+            res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO", "datos": [pago[1], pago[2], pago[3], pago[4]]}
+            
+        cursor.close()
+    except Exception as e:
+        if conn: conn.rollback() # Si algo falla, deshacer cambios
+        res = {"clase": "danger", "mensaje": f"❌ Error de Sistema: {e}"}
+    finally:
+        if conn: conn.close()
+        
     return render_template_string(HTML_PORTAL, resultado=res)
 
 @app.route('/admin')
