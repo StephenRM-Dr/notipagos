@@ -12,9 +12,10 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 app = Flask(__name__)
+# Prioriza la clave del .env, si no existe usa la de respaldo
 app.secret_key = os.getenv("SECRET_KEY", "clave_sistemas_mv_2026")
 
-# Seguridad de sesión: Solo dura 30 min y no es accesible por JS
+# Seguridad de sesión
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
@@ -30,7 +31,7 @@ def get_db_connection():
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASS"),
         port=os.getenv("DB_PORT", "5432"),
-        sslmode="require" if "neon.tech" in os.getenv("DB_HOST", "") else "disable",
+        sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable",
         client_encoding='utf8'
     )
 
@@ -54,10 +55,8 @@ def inicializar_db():
         print("✅ Base de Datos operativa y lista.")
     except Exception as e: print(f"❌ Error DB: {e}")
 
-# --- LÓGICA DE LIMPIEZA Y EXTRACCIÓN BDV (RESTAURADA) ---
+# --- LÓGICA DE LIMPIEZA BDV ---
 def limpiar_mensaje_bdv(texto):
-    """Lógica original de limpieza y extracción del Banco de Venezuela"""
-    # Limpiador inicial de texto
     texto_limpio = texto.replace('"', '').replace('\n', ' ').strip()
     
     regex_emisor = r"de\s+(.*?)\s+por"
@@ -68,7 +67,6 @@ def limpiar_mensaje_bdv(texto):
     monto = re.search(regex_monto, texto_limpio)
     ref = re.search(regex_ref, texto_limpio)
     
-    # Si no halla el número de operación con la palabra clave, busca cualquier número de 6+ dígitos
     referencia_final = ref.group(1) if ref else (re.findall(r"\d{6,}", texto_limpio)[-1] if re.findall(r"\d{6,}", texto_limpio) else None)
     
     return {
@@ -77,37 +75,55 @@ def limpiar_mensaje_bdv(texto):
         "referencia": referencia_final
     }
 
-# --- ESTILOS CSS UNIFICADOS ---
+# --- ESTILOS CSS ---
 CSS_COMUN = '''
 :root { --primary: #004481; --secondary: #f4f7f9; --accent: #00b1ea; --danger: #d9534f; --success: #28a745; --warning: #ffc107; }
-body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secondary); margin: 0; color: #333; }
-.btn { border: none; border-radius: 8px; padding: 10px 20px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-block; text-align: center; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secondary); margin: 0; color: #333; line-height: 1.5; }
+
+/* Contenedores Responsivos */
+.wrapper, .container { width: 100%; max-width: 1150px; margin: auto; padding: 10px; box-sizing: border-box; }
+
+.btn { border: none; border-radius: 8px; padding: 10px 15px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; gap: 5px; }
 .btn-primary { background: var(--primary); color: white; }
 .btn-success { background: var(--success); color: white; }
 .btn-danger { background: var(--danger); color: white; }
-.card { background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); padding: 30px; border: 1px solid #eee; }
-.logo-img { max-width: 180px; height: auto; margin-bottom: 20px; }
-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; margin-top: 15px; }
-th { background: var(--primary); color: white; padding: 15px; text-align: left; }
-td { padding: 12px 15px; border-bottom: 1px solid #eee; font-size: 14px; }
-.badge { padding: 5px 12px; border-radius: 50px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+
+.card { background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); padding: 20px; border: 1px solid #eee; margin-bottom: 20px; }
+.logo-img { max-width: 150px; height: auto; margin-bottom: 15px; }
+
+/* Tabla Responsiva */
+.table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; border: 1px solid #eee; }
+table { width: 100%; border-collapse: collapse; background: white; min-width: 600px; }
+th { background: var(--primary); color: white; padding: 12px; text-align: left; font-size: 13px; }
+td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+
+/* Badges y Resumen */
+.badge { padding: 4px 10px; border-radius: 50px; font-size: 10px; font-weight: bold; }
 .LIBRE { background: #e7f4e8; color: #2e7d32; }
 .CANJEADO { background: #fdecea; color: #c62828; }
-.resumen { background: var(--primary); color: white; padding: 20px; border-radius: 12px; margin-top: 20px; text-align: right; font-size: 18px; }
+.resumen { background: var(--primary); color: white; padding: 15px; border-radius: 12px; text-align: right; font-size: 16px; margin-top: 10px; }
+
+/* Ajustes para Celulares */
+@media (max-width: 600px) {
+    .header-admin { flex-direction: column; text-align: center; gap: 15px; }
+    .btn { padding: 12px; width: 100%; }
+    .card { padding: 15px; }
+    h2 { font-size: 1.2rem; }
+    .resumen { text-align: center; font-size: 14px; }
+}
 '''
 
-# --- VISTAS HTML ---
-HTML_LOGIN = '''<!DOCTYPE html><html><head><title>Login</title><style>''' + CSS_COMUN + '''body{display:flex;justify-content:center;align-items:center;height:100vh;background:linear-gradient(135deg, #004481 0%, #00b1ea 100%);}</style></head><body><div class="card" style="width:350px;text-align:center;"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"><form method="POST"><input type="password" name="password" placeholder="Clave Administrativa" style="width:100%;padding:12px;margin-bottom:15px;border:1px solid #ddd;border-radius:8px;" required autofocus><button type="submit" class="btn btn-primary" style="width: 100%;">Entrar</button></form></div></body></html>'''
+# --- VISTAS HTML CORREGIDAS ---
+HTML_LOGIN = '''<!DOCTYPE html><html><head><title>Login Admin</title><style>''' + CSS_COMUN + '''body{display:flex;justify-content:center;align-items:center;height:100vh;background:linear-gradient(135deg, #004481 0%, #00b1ea 100%);}</style></head><body><div class="card" style="width:350px;text-align:center;"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"><h3 style="margin-top:0;">Acceso Administrativo</h3><form method="POST"><input type="password" name="password" placeholder="Clave de Seguridad" style="width:100%;padding:12px;margin-bottom:15px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;" required autofocus><button type="submit" class="btn btn-primary" style="width: 100%;">ENTRAR AL PANEL</button></form><br><a href="/" style="color:white; text-decoration:none; font-size:14px; opacity:0.8;">← Volver al Verificador</a></div></body></html>'''
 
-HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>''' + CSS_COMUN + '''.wrapper{max-width:500px;margin:40px auto;padding:0 15px;}</style></head><body><div class="wrapper"><div style="display:flex;justify-content:space-between;margin-bottom:20px;"><a href="/" class="btn" style="background:#ddd;">🔄 Recargar</a><a href="/admin" class="btn btn-primary">⚙️ Panel Admin</a></div><div class="card" style="text-align: center;"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"><form method="POST" action="/verificar"><input type="text" name="ref" placeholder="Referencia" style="width:100%;padding:15px;font-size:24px;border:2px solid #eee;border-radius:12px;text-align:center;margin-bottom:15px;" required autocomplete="off" inputmode="numeric"><button type="submit" class="btn btn-primary" style="width: 100%; font-size: 18px; padding: 15px;">VERIFICAR</button></form>{% if resultado %}<div style="margin-top:20px;padding:20px;border-radius:10px;text-align:left;" class="{{ resultado.clase }}"><h3>{{ resultado.mensaje }}</h3>{% if resultado.datos %}<b>👤 Emisor:</b> {{ resultado.datos[0] }}<br><b>💰 Monto:</b> Bs. {{ resultado.datos[1] }}<br><b>🔢 Ref:</b> {{ resultado.datos[3] }}{% endif %}</div><script>new Audio('/static/{{ "success.mp3" if resultado.clase == "success" else "error.mp3" }}').play().catch(e => console.log("Esperando interacción"));</script>{% endif %}</div></div></body></html>'''
+HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador de Pagos</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>''' + CSS_COMUN + '''.wrapper{max-width:500px;margin:40px auto;padding:0 15px;}</style></head><body><div class="wrapper"><div style="display:flex;justify-content:space-between;margin-bottom:20px;"><a href="/" class="btn" style="background:#ddd; color:#333;">🔄 Limpiar</a><a href="/admin" class="btn btn-primary">⚙️ Acceso Admin</a></div><div class="card" style="text-align: center;"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"><h2>Verificar Referencia</h2><form method="POST" action="/verificar"><input type="text" name="ref" placeholder="Ej: 123456" style="width:100%;padding:15px;font-size:24px;border:2px solid #eee;border-radius:12px;text-align:center;margin-bottom:15px;box-sizing:border-box;" required autocomplete="off" inputmode="numeric"><button type="submit" class="btn btn-primary" style="width: 100%; font-size: 18px; padding: 15px;">CONSULTAR PAGO</button></form>{% if resultado %}<div style="margin-top:20px;padding:20px;border-radius:10px;text-align:left; border: 1px solid #ddd;" class="{{ resultado.clase }}"><h3>{{ resultado.mensaje }}</h3>{% if resultado.datos %}<b>👤 Emisor:</b> {{ resultado.datos[0] }}<br><b>💰 Monto:</b> Bs. {{ resultado.datos[1] }}<br><b>🔢 Ref:</b> {{ resultado.datos[3] }}{% endif %}</div><script>new Audio('/static/{{ "success.mp3" if resultado.clase == "success" else "error.mp3" }}').play().catch(e => console.log("Audio bloqueado por navegador"));</script>{% endif %}</div></div></body></html>'''
 
-HTML_ADMIN = '''<!DOCTYPE html><html><head><title>Admin</title><style>''' + CSS_COMUN + '''.container{max-width:1150px;margin:30px auto;padding:0 20px;}</style></head><body><div class="container"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><div><img src="/static/logo.png" style="height:50px;"><h2 style="margin:0;color:var(--primary);">Control de Pagos</h2></div><div><a href="/admin/exportar" class="btn btn-success">📊 Excel</a><a href="/logout" class="btn btn-danger">CERRAR SESIÓN TOTAL</a></div></div><div class="card"><form method="GET" style="display:flex;gap:10px;margin-bottom:20px;"><input type="text" name="q" placeholder="Buscar..." style="flex-grow:1;padding:10px;border-radius:8px;border:1px solid #ddd;" value="{{ query }}"><button type="submit" class="btn btn-primary">🔍</button></form><div style="overflow-x:auto;"><table><thead><tr><th>Fecha/Hora</th><th>Emisor</th><th>Monto</th><th>Ref</th><th>Estado</th><th>Canjeado</th><th>Acción</th></tr></thead><tbody>{% for p in pagos %}<tr><td>{{p[1]}}<br><small style="color:#999">{{p[2]}}</small></td><td>{{p[3]}}</td><td style="font-weight:bold;">Bs. {{p[4]}}</td><td><code>{{p[5]}}</code></td><td><span class="badge {{p[7]}}">{{p[7]}}</span></td><td style="color:var(--danger);font-weight:bold;">{{p[8] if p[8] else '---'}}</td><td>{% if p[7] == 'CANJEADO' %}<form method="POST" action="/admin/liberar" style="display:flex;gap:5px;"><input type="hidden" name="ref" value="{{p[5]}}"><input type="password" name="pw" placeholder="PIN" style="width:40px;" required><button type="submit" class="btn" style="background:var(--warning);padding:5px;">Lib.</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div><div class="resumen">Total Filtrado: <b>Bs. {{ total }}</b></div></div></div></body></html>'''
+HTML_ADMIN = '''<!DOCTYPE html><html><head><title>Panel de Control</title><style>''' + CSS_COMUN + '''.container{max-width:1150px;margin:30px auto;padding:0 20px;}</style></head><body><div class="container"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><div><img src="/static/logo.png" style="height:50px; vertical-align:middle; margin-right:10px;"><h2 style="display:inline; margin:0;color:var(--primary); vertical-align:middle;">Control de Pagos</h2></div><div style="display:flex; gap:10px;"><a href="/" class="btn" style="background:#ddd; color:#333;">🔍 Verificador</a><a href="/admin/exportar" class="btn btn-success">📊 Excel</a><a href="/logout" class="btn btn-danger">SALIR</a></div></div><div class="card"><form method="GET" style="display:flex;gap:10px;margin-bottom:20px;"><input type="text" name="q" placeholder="Buscar por emisor o referencia..." style="flex-grow:1;padding:12px;border-radius:8px;border:1px solid #ddd;" value="{{ query }}"><button type="submit" class="btn btn-primary">BUSCAR</button></form><div style="overflow-x:auto;"><table><thead><tr><th>Fecha/Hora</th><th>Emisor</th><th>Monto</th><th>Ref</th><th>Estado</th><th>Canjeado el</th><th>Acción</th></tr></thead><tbody>{% for p in pagos %}<tr><td>{{p[1]}}<br><small style="color:#999">{{p[2]}}</small></td><td>{{p[3]}}</td><td style="font-weight:bold;">Bs. {{p[4]}}</td><td><code>{{p[5]}}</code></td><td><span class="badge {{p[7]}}">{{p[7]}}</span></td><td style="color:var(--danger);font-size:12px;">{{p[8] if p[8] else '---'}}</td><td>{% if p[7] == 'CANJEADO' %}<form method="POST" action="/admin/liberar" style="display:flex;gap:5px;"><input type="hidden" name="ref" value="{{p[5]}}"><input type="password" name="pw" placeholder="PIN" style="width:50px; padding:5px; border-radius:4px; border:1px solid #ddd;" required><button type="submit" class="btn" style="background:var(--warning);padding:5px 10px; font-size:12px;">Reset</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div><div class="resumen">Total en Pantalla: <b>Bs. {{ total }}</b></div></div></div></body></html>'''
 
 # --- RUTAS ---
 
 @app.route('/webhook-bdv', methods=['POST'])
 def webhook():
-    """FUNCIONALIDAD COMPLETA DE WEBHOOK Y LIMPIEZA RECUPERADA"""
     raw_data = request.get_data(as_text=True).strip()
     match = re.search(r'"mensaje":\s*"(.*)"', raw_data, re.DOTALL)
     mensaje = match.group(1).replace('\\"', '"').replace('\"', '"') if match else None
@@ -209,4 +225,5 @@ def index(): return render_template_string(HTML_PORTAL)
 
 if __name__ == '__main__':
     inicializar_db()
+    # Koyeb usa el puerto 5000 según tu configuración actual
     app.run(host='0.0.0.0', port=5000)
