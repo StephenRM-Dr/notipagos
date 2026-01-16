@@ -6,22 +6,24 @@ import pandas as pd
 from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session, send_file
 from datetime import datetime
 from io import BytesIO
+from dotenv import load_dotenv # Nueva librería
 
-# --- CONFIGURACIÓN DE ENTORNO ---
-os.environ['PGCLIENTENCODING'] = 'utf-8'
+# --- CARGAR CONFIGURACIÓN DESDE .ENV ---
+load_dotenv() 
 
 app = Flask(__name__)
-app.secret_key = "clave_secreta_sistemas_mv_2024" 
+app.secret_key = os.getenv("SECRET_KEY", "clave_defecto_segura")
 
-# --- CONFIGURACIÓN DE BASE DE DATOS ---
+# --- CONFIGURACIÓN DE BASE DE DATOS (LECTURA DESDE ENV) ---
 DB_CONFIG = {
-    "host": "localhost",
-    "database": "pagos",
-    "user": "admin",
-    "password": "sistemasmv",
-    "port": "5432"
+    "host": os.getenv("DB_HOST"),
+    "database": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASS"),
+    "port": os.getenv("DB_PORT", "5432"),
+    "sslmode": "require"
 }
-ADMIN_PASSWORD = "admin123"
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
 def get_db_connection():
     return psycopg2.connect(**DB_CONFIG, client_encoding='utf8')
@@ -46,9 +48,9 @@ def inicializar_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Base de Datos lista.")
+        print("✅ Conectado a Neon Cloud y Base de Datos lista.")
     except Exception as e:
-        print(f"❌ Error DB: {e}")
+        print(f"❌ Error de conexión a la nube: {e}")
 
 # --- ESTILOS CSS ---
 CSS_COMUN = '''
@@ -63,7 +65,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secon
 .logo-img { max-width: 180px; height: auto; }
 '''
 
-# --- VISTAS HTML ---
+# --- VISTAS HTML (CON SONIDOS Y EXCEL) ---
 
 HTML_LOGIN = '''
 <!DOCTYPE html>
@@ -127,7 +129,7 @@ HTML_PORTAL = '''
                 </div>
                 <script>
                     var audio = new Audio('/static/{{ "success.mp3" if resultado.clase == "success" else "error.mp3" }}');
-                    audio.play().catch(e => console.log("Audio bloqueado por navegador"));
+                    audio.play().catch(e => console.log("Audio en espera de interacción"));
                 </script>
             {% endif %}
         </div>
@@ -322,7 +324,7 @@ def exportar():
         nombre_archivo = f"Reporte_Pagos_{datetime.now().strftime('%d_%m_%Y')}.xlsx"
         return send_file(output, as_attachment=True, download_name=nombre_archivo, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except Exception as e:
-        return f"Error al generar Excel: {e}"
+        return f"Error Excel: {e}"
 
 if __name__ == '__main__':
     inicializar_db()
