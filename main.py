@@ -2,10 +2,12 @@ import psycopg2
 import re
 import json
 import os
-from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session
+import pandas as pd
+from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session, send_file
 from datetime import datetime
+from io import BytesIO
 
-# --- SOLUCIÓN AL ERROR DE UNICODE EN WINDOWS ---
+# --- CONFIGURACIÓN DE ENTORNO ---
 os.environ['PGCLIENTENCODING'] = 'utf-8'
 
 app = Flask(__name__)
@@ -44,20 +46,9 @@ def inicializar_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Base de Datos Postgres lista.")
+        print("✅ Base de Datos lista.")
     except Exception as e:
-        print(f"❌ Error al inicializar DB: {e}")
-
-def limpiar_mensaje_bdv(texto):
-    texto_limpio = texto.replace('"', '').replace('\n', ' ').strip()
-    regex_emisor = r"de\s+(.*?)\s+por"
-    regex_monto = r"Bs\.?\s?([\d.]+,\d{2})"
-    regex_ref = r"(?:operaci[óo]n\s+)(\d+)"
-    emisor = re.search(regex_emisor, texto_limpio)
-    monto = re.search(regex_monto, texto_limpio)
-    ref = re.search(regex_ref, texto_limpio)
-    referencia_final = ref.group(1) if ref else (re.findall(r"\d{6,}", texto_limpio)[-1] if re.findall(r"\d{6,}", texto_limpio) else None)
-    return {"emisor": emisor.group(1).strip() if emisor else "Desconocido", "monto": monto.group(1) if monto else "0,00", "referencia": referencia_final}
+        print(f"❌ Error DB: {e}")
 
 # --- ESTILOS CSS ---
 CSS_COMUN = '''
@@ -65,11 +56,14 @@ CSS_COMUN = '''
 body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secondary); margin: 0; color: #333; }
 .btn { border: none; border-radius: 6px; padding: 10px 20px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-block; text-align: center; }
 .btn-primary { background: var(--primary); color: white; }
+.btn-success { background: var(--success); color: white; }
 .btn-danger { background: var(--danger); color: white; }
 .card { background: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 25px; }
+.logo-container { margin-bottom: 20px; text-align: center; }
+.logo-img { max-width: 180px; height: auto; }
 '''
 
-# --- VISTAS HTML (CORREGIDAS SIN F-STRINGS) ---
+# --- VISTAS HTML ---
 
 HTML_LOGIN = '''
 <!DOCTYPE html>
@@ -84,11 +78,11 @@ HTML_LOGIN = '''
 </head>
 <body>
     <div class="card login-card">
-        <h2 style="color: var(--primary)">Sistemas MV</h2>
+        <div class="logo-container"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"></div>
         {% if error %}<p style="color: var(--danger)">{{ error }}</p>{% endif %}
         <form method="POST">
-            <input type="password" name="password" placeholder="Contraseña Maestra" required autofocus>
-            <button type="submit" class="btn btn-primary" style="width: 100%">Entrar al Panel</button>
+            <input type="password" name="password" placeholder="Clave Administrativa" required autofocus>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Entrar</button>
         </form>
     </div>
 </body>
@@ -107,31 +101,34 @@ HTML_PORTAL = '''
     .input-ref { width: 100%; padding: 15px; font-size: 24px; border: 2px solid #eee; border-radius: 10px; text-align: center; margin-bottom: 15px; }
     .alert { border-radius: 10px; padding: 20px; margin-top: 20px; text-align: left; }
     .success { background: #e7f4e8; color: #1e4620; border-left: 5px solid var(--success); }
-    .warning { background: #fff3cd; color: #856404; border-left: 5px solid var(--warning); }
-    .danger { background: #fdecea; color: #611a15; border-left: 5px solid var(--danger); }</style>
+    .danger { background: #fdecea; color: #611a15; border-left: 5px solid var(--danger); }
+    .warning { background: #fff3cd; color: #856404; border-left: 5px solid var(--warning); }</style>
 </head>
 <body>
     <div class="wrapper">
         <div class="nav-bar">
-            <a href="/" class="btn" style="background: #ddd; color: #333">🔄 Recargar</a>
+            <a href="/" class="btn" style="background: #ddd;">🔄 Recargar</a>
             <a href="/admin" class="btn btn-primary">⚙️ Panel Admin</a>
         </div>
         <div class="card" style="text-align: center;">
-            <h2 style="color: var(--primary)">Validar Pago</h2>
+            <div class="logo-container"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"></div>
             <form method="POST" action="/verificar">
-                <input type="text" name="ref" class="input-ref" placeholder="000000" required autocomplete="off">
-                <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 18px;">VERIFICAR AHORA</button>
+                <input type="text" name="ref" class="input-ref" placeholder="Referencia" required autocomplete="off" inputmode="numeric">
+                <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 18px; padding: 15px;">VERIFICAR</button>
             </form>
             {% if resultado %}
                 <div class="alert {{ resultado.clase }}">
-                    <h3 style="margin: 0 0 10px 0;">{{ resultado.mensaje }}</h3>
+                    <h3>{{ resultado.mensaje }}</h3>
                     {% if resultado.datos %}
                         <b>👤 Emisor:</b> {{ resultado.datos[0] }}<br>
                         <b>💰 Monto:</b> Bs. {{ resultado.datos[1] }}<br>
                         <b>🔢 Ref:</b> {{ resultado.datos[3] }}
-                        {% if resultado.datos[4] %}<br><span style="color: var(--danger)">📌 <b>Canjeado:</b> {{ resultado.datos[4] }}</span>{% endif %}
                     {% endif %}
                 </div>
+                <script>
+                    var audio = new Audio('/static/{{ "success.mp3" if resultado.clase == "success" else "error.mp3" }}');
+                    audio.play().catch(e => console.log("Audio bloqueado por navegador"));
+                </script>
             {% endif %}
         </div>
     </div>
@@ -147,8 +144,7 @@ HTML_ADMIN = '''
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>''' + CSS_COMUN + '''
     .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
-    .search-bar { background: white; padding: 15px; border-radius: 10px; display: flex; gap: 10px; margin-bottom: 20px; }
-    .search-bar input { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+    .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
     table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
     th { background: var(--primary); color: white; padding: 15px; text-align: left; }
     td { padding: 12px 15px; border-bottom: 1px solid #eee; }
@@ -159,15 +155,24 @@ HTML_ADMIN = '''
 </head>
 <body>
     <div class="container">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h1 style="color: var(--primary)">Panel Administrativo</h1>
-            <div><a href="/" class="btn" style="background:#eee;">Verificador</a> <a href="/logout" class="btn btn-danger">Salir</a></div>
+        <div class="header-actions">
+            <div style="display:flex; align-items:center; gap:15px;">
+                <img src="/static/logo.png" style="height: 50px;" onerror="this.style.display='none';">
+                <h1 style="color: var(--primary); margin:0;">Panel Administrativo</h1>
+            </div>
+            <div>
+                <a href="/admin/exportar" class="btn btn-success">📊 Descargar Excel</a>
+                <a href="/" class="btn" style="background:#eee;">Verificador</a>
+                <a href="/logout" class="btn btn-danger">Salir</a>
+            </div>
         </div>
-        <form method="GET" action="/admin" class="search-bar">
-            <input type="text" name="q" placeholder="Buscar por emisor o referencia..." value="{{ query }}">
+        
+        <form method="GET" action="/admin" style="display:flex; gap:10px; margin-bottom:20px;">
+            <input type="text" name="q" placeholder="Buscar por emisor o referencia..." style="flex-grow:1; padding:10px; border-radius:6px; border:1px solid #ddd;" value="{{ query }}">
             <button type="submit" class="btn btn-primary">🔍 Buscar</button>
-            {% if query %}<a href="/admin" style="padding: 10px; color: #666;">Limpiar</a>{% endif %}
+            {% if query %}<a href="/admin" style="padding:10px; color:#666;">Limpiar</a>{% endif %}
         </form>
+
         <div style="overflow-x: auto;">
             <table>
                 <thead><tr><th>Fecha</th><th>Emisor</th><th>Monto</th><th>Ref</th><th>Estado</th><th>Acción</th></tr></thead>
@@ -178,13 +183,13 @@ HTML_ADMIN = '''
                         <td>{{p[3]}}</td>
                         <td style="font-weight: bold;">Bs. {{p[4]}}</td>
                         <td><code>{{p[5]}}</code></td>
-                        <td><span class="badge {{p[7]}}">{{p[7]}}</span><br><small>{{p[8] if p[8] else ""}}</small></td>
+                        <td><span class="badge {{p[7]}}">{{p[7]}}</span></td>
                         <td>
                             {% if p[7] == 'CANJEADO' %}
-                            <form method="POST" action="/admin/liberar" style="display: flex; gap: 4px;">
+                            <form method="POST" action="/admin/liberar" style="display:flex; gap:5px;">
                                 <input type="hidden" name="ref" value="{{p[5]}}">
-                                <input type="password" name="pw" placeholder="PIN" style="width: 50px;" required>
-                                <button type="submit" class="btn" style="background: var(--warning); padding: 5px; font-size: 11px;">Liberar</button>
+                                <input type="password" name="pw" placeholder="PIN" style="width:40px; border:1px solid #ddd;" required>
+                                <button type="submit" class="btn" style="background:var(--warning); padding:5px; font-size:11px;">Liberar</button>
                             </form>
                             {% endif %}
                         </td>
@@ -193,13 +198,26 @@ HTML_ADMIN = '''
                 </tbody>
             </table>
         </div>
-        <div class="resumen"><b>Suma Total:</b> Bs. {{ total }}</div>
+        <div class="resumen"><b>Suma en Pantalla:</b> Bs. {{ total }}</div>
     </div>
 </body>
 </html>
 '''
 
-# --- RUTAS DE LA APLICACIÓN ---
+# --- LÓGICA DE PROCESAMIENTO ---
+
+def limpiar_mensaje_bdv(texto):
+    texto_limpio = texto.replace('"', '').replace('\n', ' ').strip()
+    regex_emisor = r"de\s+(.*?)\s+por"
+    regex_monto = r"Bs\.?\s?([\d.]+,\d{2})"
+    regex_ref = r"(?:operaci[óo]n\s+)(\d+)"
+    emisor = re.search(regex_emisor, texto_limpio)
+    monto = re.search(regex_monto, texto_limpio)
+    ref = re.search(regex_ref, texto_limpio)
+    referencia_final = ref.group(1) if ref else (re.findall(r"\d{6,}", texto_limpio)[-1] if re.findall(r"\d{6,}", texto_limpio) else None)
+    return {"emisor": emisor.group(1).strip() if emisor else "Desconocido", "monto": monto.group(1) if monto else "0,00", "referencia": referencia_final}
+
+# --- RUTAS FLASK ---
 
 @app.route('/webhook-bdv', methods=['POST'])
 def webhook():
@@ -285,6 +303,26 @@ def liberar():
         cursor.execute("UPDATE pagos SET estado = 'LIBRE', fecha_canje = NULL WHERE referencia = %s", (request.form.get('ref'),))
         conn.commit(); cursor.close(); conn.close()
     return redirect(url_for('admin'))
+
+@app.route('/admin/exportar')
+def exportar():
+    if not session.get('logged_in'): return redirect(url_for('login'))
+    try:
+        conn = get_db_connection(); cursor = conn.cursor()
+        cursor.execute("SELECT fecha_recepcion, hora_recepcion, emisor, monto, referencia, estado, fecha_canje FROM pagos ORDER BY id DESC")
+        datos = cursor.fetchall()
+        cursor.close(); conn.close()
+        
+        df = pd.DataFrame(datos, columns=['Fecha Recibido', 'Hora', 'Emisor', 'Monto (Bs)', 'Referencia', 'Estado', 'Fecha Canje'])
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Pagos')
+        output.seek(0)
+        
+        nombre_archivo = f"Reporte_Pagos_{datetime.now().strftime('%d_%m_%Y')}.xlsx"
+        return send_file(output, as_attachment=True, download_name=nombre_archivo, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except Exception as e:
+        return f"Error al generar Excel: {e}"
 
 if __name__ == '__main__':
     inicializar_db()
