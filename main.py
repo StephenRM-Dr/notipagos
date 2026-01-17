@@ -57,104 +57,51 @@ def inicializar_db():
 
 # --- NUEVA LÓGICA DE EXTRACCIÓN MULTI-BANCO ---
 def extractor_inteligente(texto):
-    """Identifica el banco y extrae datos con reglas específicas y fallback permisivo"""
-    # Limpieza inicial para evitar errores de saltos de línea
+    # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
+    pagos_detectados = []
     
-    patrones_plataformas = {
-        "BDV": {
-            "keywords": ["bdv", "venezuela"],
-            "regex_emisor": r"de\s+(.*?)\s+por",
-            "regex_monto": r"(?:Bs\.?|monto)\s?([\d.]+,\d{2})",
-            "regex_ref": r"(?:operaci[óo]n\s+|ref\.?\s?)(\d+)"
-        },
-        "BANESCO": {
-            "keywords": ["banesco"],
-            "regex_emisor": r"de\s+(.*?)\s+por",
-            "regex_monto": r"monto\s+Bs\.\s?([\d.]+,\d{2})",
-            "regex_ref": r"(?:Recibo\s+|Ref\.?\s?)(\d+)"
-        },
-        "PLAZA": {
-            "keywords": ["plaza"],
-            "regex_emisor": r"desde\s+(.*?)\s+por",
-            "regex_monto": r"Bs\.\s?([\d.]+,\d{2})",
-            "regex_ref": r"Ref\.\s?(\d+)"
-        },
-        "SOFITASA": {
-            "keywords": ["sofitasa"],
-            "regex_emisor": r"de\s+(.*?)\s+por",
-            "regex_monto": r"Bs\.\s?([\d.]+,\d{2})",
-            "regex_ref": r"(?:Referencia\s?|Ref\.?\s?)(\d+)"
-        },
-        "BINANCE": {
-            "keywords": ["binance", "pay"],
-            "regex_emisor": r"(?:from|de)\s+(.*?)\s+(?:received|recibido)",
-            "regex_monto": r"([\d.]+)\s?(?:USDT|FDUSD|USDC)",
-            "regex_ref": r"(?:ID|Order|Ref\.?)\s?(\d{8,})"
-        },
-        "BANCOLOMBIA": {
-            "keywords": ["bancolombia", "compra", "recepcion"],
-            "regex_emisor": r"en\s+(.*?)\s+por",
-            "regex_monto": r"\$(\d[\d.,]*)",
-            "regex_ref": r"Ref\.\s?(\d+)"
-        },
-        "NEQUI": {
-            "keywords": ["nequi"],
-            "regex_emisor": r"(?:de|De)\s+(.*?)\s?te",
-            "regex_monto": r"(?:envio|envió)\s+\$(\d[\d.,]*)",
-            "regex_ref": r"(?:referencia|ref\.?)\s?(\d+)"
-        }
+    # Patrones ajustados fielmente a tus capturas de pantalla
+    patrones = {
+        "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"R\.\.\.\s?(\d+)|Ref\.\s?(\d+)"),
+        "BANESCO": (r"Banesco", r"de\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Recibo\s+(\d+)"),
+        "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
+        "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s?([\d.]+)", r"referencia\s?(\d+)"),
+        "BINANCE": (r"Binance", r"from\s+(.*?)\s+received", r"([\d.]+)\s?USDT", r"ID:\s?(\d+)")
     }
 
-    # 1. Intentar identificar por plataforma
-    for plataforma, reglas in patrones_plataformas.items():
-        if any(key in texto_limpio.lower() for key in reglas["keywords"]):
-            emisor_match = re.search(reglas["regex_emisor"], texto_limpio, re.IGNORECASE)
-            monto_match = re.search(reglas["regex_monto"], texto_limpio, re.IGNORECASE)
-            ref_match = re.search(reglas["regex_ref"], texto_limpio, re.IGNORECASE)
+    for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
+        if re.search(key, texto_limpio, re.IGNORECASE):
+            emisores = re.findall(re_emi, texto_limpio, re.IGNORECASE)
+            montos = re.findall(re_mon, texto_limpio, re.IGNORECASE)
+            # Buscamos la referencia y extraemos el grupo que no sea nulo
+            refs_raw = re.findall(re_ref, texto_limpio, re.IGNORECASE)
             
-            # --- LÓGICA PERMISIVA DENTRO DEL BANCO ---
-            # Si el banco es reconocido pero el regex falla, buscamos cualquier dato útil
-            
-            # Fallback para Referencia (Cualquier número largo de 6+ dígitos)
-            referencia_final = None
-            if ref_match:
-                referencia_final = ref_match.group(1)
-            else:
-                numeros_largos = re.findall(r"\d{6,}", texto_limpio)
-                referencia_final = numeros_largos[-1] if numeros_largos else None
+            for i in range(len(refs_raw)):
+                # Manejo de grupos múltiples en la regex de referencia
+                actual_ref = refs_raw[i]
+                if isinstance(actual_ref, tuple):
+                    actual_ref = next((x for x in actual_ref if x), None)
 
-            # Fallback para Monto (Busca formato decimal 0,00 o 0.00)
-            monto_final = "0,00"
-            if monto_match:
-                monto_final = monto_match.group(1)
-            else:
-                posibles_montos = re.findall(r"\d+[\.,]\d{2}", texto_limpio)
-                monto_final = posibles_montos[0] if posibles_montos else "0,00"
-
-            # Solo guardamos si al menos tenemos una referencia
-            if referencia_final:
-                return {
-                    "banco": plataforma,
-                    "emisor": emisor_match.group(1).strip() if emisor_match else "Titular Desconocido",
-                    "monto": monto_final,
-                    "referencia": referencia_final
-                }
-
-    # 2. FALLBACK TOTAL (Si no reconoció el banco o falló lo anterior)
-    # Buscamos cualquier referencia de 6+ dígitos en todo el texto
-    ref_gen = re.findall(r"\d{6,}", texto_limpio)
-    if ref_gen:
-        # Intentar capturar un monto genérico si existe
-        monto_gen = re.findall(r"\d+[\.,]\d{2}", texto_limpio)
-        return {
-            "banco": "OTRO/DESCONOCIDO",
-            "emisor": "Verificar Manual",
-            "monto": monto_gen[0] if monto_gen else "0,00",
-            "referencia": ref_gen[-1]
-        }
+                pagos_detectados.append({
+                    "banco": banco,
+                    "emisor": emisores[i].strip() if i < len(emisores) else "Titular Desconocido",
+                    "monto": montos[i] if i < len(montos) else "0,00",
+                    "referencia": actual_ref
+                })
     
-    return None # No se encontró nada que parezca un pago
+    # Si no detectó nada por patrones, usamos el buscador de emergencia
+    if not pagos_detectados:
+        ref_emergencia = re.findall(r"\d{8,}", texto_limpio)
+        if ref_emergencia:
+            pagos_detectados.append({
+                "banco": "DESCONOCIDO",
+                "emisor": "Revisar Notificación",
+                "monto": "0,00",
+                "referencia": ref_emergencia[0]
+            })
+
+    return pagos_detectados
 # --- ESTILOS CSS ---
 CSS_COMUN = '''
 :root { --primary: #004481; --secondary: #f4f7f9; --accent: #00b1ea; --danger: #d9534f; --success: #28a745; --warning: #ffc107; }
