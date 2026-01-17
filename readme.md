@@ -55,6 +55,7 @@ __Disparador (Trigger)__: Notificación de la App "BDV digital".
 __Acción__: Solicitud HTTP POST.
 
 **Nota Importante:** deben cambiar la URL de la acción HTTP por la que les corresponde, ya que actualmente tiene  URL de `localhost`.
+
 __URL__: `https://tu-app-koyeb.koyeb.app/webhook-bdv`(nube-koyeb)
 __URL__: `https://localhost:5000/webhook-bdv` (Local)
 
