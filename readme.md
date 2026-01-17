@@ -67,8 +67,6 @@ __Cuerpo (application/json)__:
 {"mensaje": "[notification_title] [notification_text]"}
 ```
 
-
-tu URL de Koyeb.
 ### 🔐 Seguridad (Race Condition)
 El sistema incluye protección de base de datos `FOR UPDATE` para evitar que una misma referencia de pago sea validada dos veces simultáneamente.
 
