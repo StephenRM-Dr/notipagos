@@ -68,7 +68,7 @@ __Cuerpo (application/json)__:
 ```
 
 
-**Nota Importante:** En el README, avisa a los usuarios que deben cambiar la URL de la acción HTTP por la de ellos, ya que actualmente tiene tu URL de Koyeb.
+tu URL de Koyeb.
 ### 🔐 Seguridad (Race Condition)
 El sistema incluye protección de base de datos `FOR UPDATE` para evitar que una misma referencia de pago sea validada dos veces simultáneamente.
 
