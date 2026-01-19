@@ -23,14 +23,19 @@ def get_db_connection():
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
 
-# --- EXTRACTOR (Mantiene limpieza de texto guardada) ---
+# --- EXTRACTOR MEJORADO (Basado en tus pruebas y mensaje real) ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
     patrones = {
-        "BDV": (r"BDV|PagomovilBDV", r"(?:del|tlf|de)\s?(\d{4}-\d+)", r"por\s+Bs\.?\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)"),
+        "BDV": (
+            r"BDV|PagomovilBDV", 
+            r"(?:del|tlf|desde el tlf)\s?(\d{4}-\d+|\d{11})", 
+            r"(?:por|por Bs\.|por Bs|por\s+)\s?([\d.]+,\d{2})", # Mejorado para capturar montos con/sin "Bs."
+            r"Ref:\s?(\d+)"
+        ),
         "BANESCO": (r"Banesco", r"(?:de|desde)\s+(\d+)", r"Bs\.\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)"),
         "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)"),
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
@@ -44,13 +49,17 @@ def extractor_inteligente(texto):
             m_mon = re.search(re_mon, texto_limpio, re.IGNORECASE)
             m_ref = re.search(re_ref, texto_limpio, re.IGNORECASE)
             if m_ref:
+                # Limpieza de monto: si viene como 100,00 se guarda tal cual.
+                monto_final = m_mon.group(1) if m_mon else "0,00"
                 pagos_detectados.append({
-                    "banco": banco, "emisor": m_emi.group(1) if m_emi else "S/D", 
-                    "monto": m_mon.group(1) if m_mon else "0,00", "referencia": m_ref.group(1)
+                    "banco": banco, 
+                    "emisor": m_emi.group(1) if m_emi else "S/D", 
+                    "monto": monto_final, 
+                    "referencia": m_ref.group(1)
                 })
     return pagos_detectados
 
-# --- CSS INTEGRADO (Colores de Bancos + Responsividad) ---
+# --- CSS DEFINITIVO (Responsivo + Colores Bancos) ---
 CSS_FINAL = '''
 :root { 
     --primary: #004481; --secondary: #f4f7f9; --danger: #d9534f; --success: #28a745; --warning: #ffc107;
@@ -78,7 +87,7 @@ td { padding: 16px; border-bottom: 1px solid #f1f1f1; font-size: 14px; }
 #loader { display: none; border: 3px solid #f3f3f3; border-top: 3px solid var(--primary); border-radius: 50%; width: 25px; height: 25px; animation: spin 1s linear infinite; margin: 10px auto; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
-.total-item { padding: 25px; border-radius: 18px; color: white; position: relative; overflow: hidden; }
+.total-item { padding: 25px; border-radius: 18px; color: white; font-weight: bold; }
 @media (max-width: 600px) { .nav-header { flex-direction: column; gap:10px; } .btn { width: 100%; } }
 '''
 
@@ -128,7 +137,7 @@ HTML_ADMIN = '''<!DOCTYPE html><html><head>
             <a href="/logout" class="btn btn-danger">Cerrar</a>
         </div>
     </div>
-    <div class="card" style="padding:15px;"><input type="text" id="adminSearch" class="btn-light" placeholder="🔍 Buscar pago..." onkeyup="filterTable()" style="width:100%; padding:15px; border-radius:10px; border:1px solid #ddd; outline:none;"></div>
+    <div class="card" style="padding:15px;"><input type="text" id="adminSearch" class="btn-light" placeholder="🔍 Buscar pago..." onkeyup="filterTable()" style="width:100%; padding:15px; border-radius:10px; border:1px solid #ddd; outline:none; width:100%;"></div>
     <div class="table-wrapper card" style="padding:0;">
         <table id="paymentsTable">
             <thead><tr><th>Fecha / Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acciones</th></tr></thead>
