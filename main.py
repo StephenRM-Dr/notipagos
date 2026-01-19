@@ -23,7 +23,7 @@ def get_db_connection():
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
 
-# --- EXTRACTOR INTELIGENTE INTEGRAL ---
+# --- EXTRACTOR INTELIGENTE (Ajustado para SMS Sofitasa) ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
@@ -32,7 +32,12 @@ def extractor_inteligente(texto):
     patrones = {
         "BDV": (r"BDV|PagomovilBDV", r"(?:del|tlf|desde el tlf)\s*(\d{4}-\d+|\d{10,11})", r"(?:por|Bs\.?|Monto:)\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)"),
         "BANESCO": (r"Banesco", r"(?:de|desde|tlf)\s*(\d{10,11})", r"(?:Bs\.?|Monto:?\s*Bs\.?|por)\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)"),
-        "SOFITASA": (r"Sofitasa", r"(?:de|desde|del tlf)\s*(\d{10,11})", r"(?:Bs\.?|por)\s*([\d.]+,\d{2})", r"(?:Ref:|Referencia:)\s*(\d+)"),
+        "SOFITASA": (
+            r"SOFITASA", 
+            r"Telf\.(\d{4,11})", 
+            r"Bs\.?([\d.]+,\d{2})", # Detecta Bs.1510,50 (con o sin espacio)
+            r"Ref:(\d+)"            # Detecta Ref:566993241
+        ),
         "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s*USDT", r"(?:ID|Order):\s*(\d+)"),
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s*([\d.]+)", r"Ref\.\s*(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s*([\d.]+)", r"referencia\s*(\d+)"),
@@ -53,7 +58,7 @@ def extractor_inteligente(texto):
                 })
     return pagos_detectados
 
-# --- CSS RECTIFICADO (ESTÉTICA + RESPONSIVE) ---
+# --- CSS (Mantiene Branding y Responsive) ---
 CSS_FINAL = '''
 :root { 
     --primary: #004481; --secondary: #f4f7f9; --danger: #d9534f; --success: #28a745; --warning: #ffc107;
@@ -64,41 +69,23 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin
 .container { width: 100%; max-width: 1200px; margin: auto; padding: 10px; }
 .logo-main { max-width: 160px; height: auto; display: block; margin: 0 auto; }
 .card { background: white; border-radius: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 25px; margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.05); }
-
-/* Buttons */
 .btn { border: none; border-radius: 10px; padding: 12px 18px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: 0.3s; justify-content: center; font-size: 14px; }
 .btn-primary { background: var(--primary); color: white; }
 .btn-light { background: #fff; color: #555; border: 1px solid #ddd; }
 .btn-danger { background: var(--danger); color: white; }
-
-/* Table Responsive */
-.table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; background: white; border-radius: 15px; border: 1px solid #eee; margin-top: 10px; }
+.table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; background: white; border-radius: 15px; border: 1px solid #eee; }
 table { width: 100%; border-collapse: collapse; min-width: 900px; }
 th { background: #fcfcfc; padding: 15px; text-align: left; font-size: 11px; color: #888; border-bottom: 2px solid #eee; text-transform: uppercase; }
 td { padding: 15px; border-bottom: 1px solid #f1f1f1; font-size: 13px; }
-
-/* Totales Grid */
 .grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px; margin-top: 20px; }
 .total-item { padding: 25px; border-radius: 15px; color: white; font-weight: bold; text-align: center; }
-
-/* Login Estético */
 .login-box { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%); padding: 20px; }
 .login-card { width: 100%; max-width: 400px; padding: 40px; text-align: center; position: relative; }
-.login-input { width: 100%; padding: 15px; margin: 15px 0; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; }
-.login-input:focus { border-color: var(--primary); }
-
-/* Badges */
+.login-input { width: 100%; padding: 15px; margin: 15px 0; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; }
 .badge { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 10px; text-transform: uppercase; color: white; display: inline-block; }
-.badge-bdv { background-color: var(--bdv); }
-.badge-banesco { background-color: var(--banesco); }
 .badge-sofitasa { background-color: var(--sofitasa); }
-.badge-binance { background-color: var(--binance); color: #000; }
-
-@media (max-width: 600px) {
-    .nav-header { flex-direction: column; gap: 12px; text-align: center; }
-    .actions { width: 100%; justify-content: center; gap: 5px; }
-    .btn { flex: 1; font-size: 12px; }
-}
+.badge-bdv { background-color: var(--bdv); }
+@media (max-width: 600px) { .nav-header { flex-direction: column; gap: 12px; text-align: center; } .actions { width: 100%; justify-content: center; gap: 5px; } .btn { flex: 1; font-size: 12px; } }
 '''
 
 # --- VISTA LOGIN (RESTABLECIDO BOTÓN VERIFICADOR) ---
@@ -246,7 +233,7 @@ def exportar():
     out.seek(0)
     return send_file(out, as_attachment=True, download_name="Reporte_General.xlsx")
 
-@app.route('/webhook-bdv', methods=['POST'])
+app.route('/webhook-bdv', methods=['POST'])
 def webhook():
     try:
         raw_data = request.get_json(silent=True) or {"mensaje": request.get_data(as_text=True)}
@@ -259,9 +246,6 @@ def webhook():
                                (datetime.now().strftime("%d/%m/%Y"), datetime.now().strftime("%I:%M %p"), p['emisor'], p['monto'], p['referencia'], p['banco']))
         conn.commit(); conn.close(); return "OK", 200
     except Exception as e: return str(e), 200
-
-@app.route('/logout')
-def logout(): session.clear(); return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
