@@ -98,43 +98,24 @@ def extractor_inteligente(texto):
 CSS_COMUN = '''
 :root { --primary: #004481; --secondary: #f4f7f9; --accent: #00b1ea; --danger: #d9534f; --success: #28a745; --warning: #ffc107; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secondary); margin: 0; color: #333; line-height: 1.5; }
-
-/* Contenedores Responsivos */
 .wrapper, .container { width: 100%; max-width: 1150px; margin: auto; padding: 10px; box-sizing: border-box; }
-
 .btn { border: none; border-radius: 8px; padding: 10px 15px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; gap: 5px; }
 .btn-primary { background: var(--primary); color: white; }
 .btn-success { background: var(--success); color: white; }
 .btn-danger { background: var(--danger); color: white; }
-
 .card { background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); padding: 20px; border: 1px solid #eee; margin-bottom: 20px; }
-.logo-img { max-width: 150px; height: auto; margin-bottom: 15px; }
-
-/* Tabla Responsiva */
-.table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; border: 1px solid #eee; }
-table { width: 100%; border-collapse: collapse; background: white; min-width: 600px; }
-th { background: var(--primary); color: white; padding: 12px; text-align: left; font-size: 13px; }
-td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
-
-/* Badges y Resumen */
+.table-container { overflow-x: auto; border-radius: 12px; border: 1px solid #eee; }
+table { width: 100%; border-collapse: collapse; min-width: 900px; }
+th { background: #f8f9fa; color: #555; padding: 15px; border-bottom: 2px solid #eee; text-align: left; font-size: 11px; text-transform: uppercase; }
+td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
 .badge { padding: 4px 10px; border-radius: 50px; font-size: 10px; font-weight: bold; }
 .LIBRE { background: #e7f4e8; color: #2e7d32; }
 .CANJEADO { background: #fdecea; color: #c62828; }
-.resumen { background: var(--primary); color: white; padding: 15px; border-radius: 12px; text-align: right; font-size: 16px; margin-top: 10px; }
-
-/* Ajustes para Celulares */
-@media (max-width: 600px) {
-    .header-admin { flex-direction: column; text-align: center; gap: 15px; }
-    .btn { padding: 12px; width: 100%; }
-    .card { padding: 15px; }
-    h2 { font-size: 1.2rem; }
-    .resumen { text-align: center; font-size: 14px; }
-}
-/* Colores de Bancos */
-.badge-bdv { background: #d9534f; color: white; } /* Rojo */
-.badge-banesco { background: #28a745; color: white; } /* Verde */
-.badge-mercantil { background: #004481; color: white; } /* Azul */
-.badge-desconocido { background: #6c757d; color: white; } /* Gris */
+.badge-banco { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+.badge-bdv { background: #ffebee; color: #c62828; }
+.badge-binance { background: #fffde7; color: #856404; border: 1px solid #ffeeba; }
+.resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 25px; }
+.resumen-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid var(--primary); }
 '''
 
 # --- VISTAS HTML ---
