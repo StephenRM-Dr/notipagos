@@ -381,37 +381,74 @@ def verificar():
 
 @app.route('/admin')
 def admin():
-    if not session.get('logged_in'): return redirect(url_for('login'))
+    if not session.get('logged_in'): 
+        return redirect(url_for('login'))
+    
     query = request.args.get('q', '').strip()
     banco_sel = request.args.get('banco', '').strip()
     
-    conn = get_db_connection(); cursor = conn.cursor()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Base de la consulta
     sql = "SELECT * FROM pagos WHERE 1=1"
     params = []
+    
     if query:
         sql += " AND (emisor ILIKE %s OR referencia LIKE %s)"
         params.extend([f"%{query}%", f"%{query}%"])
+    
     if banco_sel:
         sql += " AND banco = %s"
         params.append(banco_sel)
+        
     sql += " ORDER BY id DESC"
     
     cursor.execute(sql, tuple(params))
     pagos = cursor.fetchall()
     
-    # Totales
+    # --- CÁLCULO DE TOTALES ---
     t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
+    
     for p in pagos:
         try:
-            val = float(p[4].replace('.', '').replace(',', '.'))
-            if p[9] == 'BINANCE': t_usd += val
-            elif p[9] in ['BANCOLOMBIA', 'NEQUI']: t_cop += val
-            else: t_bs += val
-        except: pass
+            # Limpiamos el monto: "1.250,50" -> 1250.50
+            # Importante: p[4] es 'monto' y p[9] es 'banco'
+            valor_str = str(p[4]).replace('.', '').replace(',', '.')
+            valor = float(valor_str)
+            
+            banco = p[9] if len(p) > 9 else 'BDV' # Evita error si falta la columna banco
+            
+            if banco == 'BINANCE':
+                t_usd += valor
+            elif banco in ['BANCOLOMBIA', 'NEQUI']:
+                t_cop += valor
+            else:
+                t_bs += valor
+        except (ValueError, IndexError, TypeError):
+            continue # Salta registros con montos mal formados
 
-    totales = {"bs": f"{t_bs:,.2f}", "usd": f"{t_usd:,.2f}", "cop": f"{t_cop:,.0f}"}
-    cursor.close(); conn.close()
-    return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales, query=query, banco_sel=banco_sel)
+    # --- FORMATEO PARA EL PANEL ---
+    # Usamos un formateo manual para asegurar que Bs y COP se vean según la costumbre local
+    def formato_moneda(n, decimales=2):
+        return f"{n:,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    totales = {
+        "bs": formato_moneda(t_bs),
+        "usd": f"{t_usd:,.2f}", # Formato americano para dólares
+        "cop": formato_moneda(t_cop, 0) # Pesos colombianos sin decimales
+    }
+    
+    cursor.close()
+    conn.close()
+    
+    return render_template_string(
+        HTML_ADMIN, 
+        pagos=pagos, 
+        totales=totales, 
+        query=query, 
+        banco_sel=banco_sel
+    )
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
