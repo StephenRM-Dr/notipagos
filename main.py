@@ -12,9 +12,6 @@ load_dotenv(override=True)
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave_sistemas_mv_2026")
 
-# ENLACE DIRECTO AL LOGO (Extraído del álbum para que funcione en <img>)
-LOGO_URL = "https://i.imgur.com/vHq7FpL.png" 
-
 # --- BASE DE DATOS ---
 def get_db_connection():
     return psycopg2.connect(
@@ -26,7 +23,7 @@ def get_db_connection():
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
 
-# --- EXTRACTOR (Optimizado para ignorar comisiones) ---
+# --- EXTRACTOR (Ignora comisiones y soporta BDV Comercio) ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
@@ -62,31 +59,44 @@ CSS_FINAL = '''
 body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin: 0; padding: 0; }
 .container { width: 100%; max-width: 1200px; margin: auto; padding: 15px; }
 .logo-main { max-width: 180px; height: auto; display: block; margin: 0 auto 20px auto; }
-.card { background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; }
-.btn { border: none; border-radius: 8px; padding: 12px 18px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; justify-content: center; }
+.card { background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); padding: 25px; margin-bottom: 20px; border: 1px solid #eee; }
+.btn { border: none; border-radius: 8px; padding: 12px 18px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; justify-content: center; transition: 0.2s; }
 .btn-primary { background: var(--primary); color: white; }
 .btn-light { background: #e0e0e0; color: #333; }
 .btn-danger { background: var(--danger); color: white; }
 .btn-warning { background: var(--warning); color: #333; }
-
-/* Tabla Responsiva */
-.table-wrapper { overflow-x: auto; background: white; border-radius: 12px; }
-table { width: 100%; border-collapse: collapse; min-width: 700px; }
-th { background: #f8f9fa; padding: 12px; text-align: left; font-size: 11px; border-bottom: 2px solid #eee; text-transform: uppercase; }
-td { padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
-
-/* Totales Responsivos */
-.grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
-.total-item { padding: 20px; border-radius: 12px; color: white; text-align: center; }
+.table-wrapper { overflow-x: auto; background: white; border-radius: 12px; border: 1px solid #eee; }
+table { width: 100%; border-collapse: collapse; min-width: 800px; }
+th { background: #f8f9fa; padding: 15px; text-align: left; font-size: 11px; color: #666; border-bottom: 2px solid #eee; text-transform: uppercase; }
+td { padding: 15px; border-bottom: 1px solid #eee; font-size: 13.5px; }
+.badge { padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 11px; }
+.CANJEADO { background: #ffdce0; color: #af1f2c; }
+.LIBRE { background: #dcffe4; color: #1a7f37; }
+.grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; }
+.total-item { padding: 20px; border-radius: 12px; color: white; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 
 @media (max-width: 600px) {
-    .btn { width: 100%; }
+    .container { padding: 10px; }
     .nav-header { flex-direction: column; gap: 10px; }
+    .btn { width: 100%; }
     .logo-main { max-width: 140px; }
 }
 '''
 
-# --- VISTA: VERIFICADOR ---
+# --- FUNCIONES DE RENDERIZADO CON URL_FOR ---
+def render_portal(resultado=None):
+    logo = url_for('static', filename='logo.png')
+    return render_template_string(HTML_PORTAL, resultado=resultado, logo_url=logo)
+
+def render_admin(pagos, totales):
+    logo = url_for('static', filename='logo.png')
+    return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales, logo_url=logo)
+
+def render_login():
+    logo = url_for('static', filename='logo.png')
+    return render_template_string(HTML_LOGIN, logo_url=logo)
+
+# --- TEMPLATES HTML ---
 HTML_PORTAL = '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verificador</title><style>''' + CSS_FINAL + '''</style></head><body>
@@ -96,15 +106,15 @@ HTML_PORTAL = '''<!DOCTYPE html><html><head>
         <a href="/admin" class="btn btn-primary">⚙️ Acceso Admin</a>
     </div>
     <div class="card" style="text-align:center;">
-        <img src="''' + LOGO_URL + '''" class="logo-main" alt="Logo">
+        <img src="{{ logo_url }}" class="logo-main" alt="Logo">
         <h2 style="color:var(--primary); margin-top:0;">Verificar Pago</h2>
         <form method="POST" action="/verificar">
-            <input type="text" name="ref" placeholder="Referencia de pago" style="width:100%; padding:15px; font-size:20px; border:2px solid #ddd; border-radius:10px; text-align:center; margin-bottom:15px;" required autocomplete="off" oninput="this.value = this.value.toUpperCase()">
-            <button type="submit" class="btn btn-primary" style="width:100%;">CONSULTAR</button>
+            <input type="text" name="ref" placeholder="Pegue su referencia" style="width:100%; padding:15px; font-size:22px; border:2px solid #ddd; border-radius:12px; text-align:center; margin-bottom:20px;" required autocomplete="off" oninput="this.value = this.value.toUpperCase()">
+            <button type="submit" class="btn btn-primary" style="width:100%; padding:18px; font-size:18px;">CONSULTAR</button>
         </form>
         {% if resultado %}
-        <div style="margin-top:20px; padding:15px; border-radius:10px; text-align:left;" class="{{ resultado.clase }}">
-            <h3 style="margin:0 0 10px 0;">{{ resultado.mensaje }}</h3>
+        <div style="margin-top:25px; padding:20px; border-radius:12px; text-align:left;" class="{{ resultado.clase }}">
+            <h3 style="margin:0 0- 10px 0;">{{ resultado.mensaje }}</h3>
             {% if resultado.datos %}
                 <b>👤 De:</b> {{ resultado.datos[0] }}<br>
                 <b>💰 Monto:</b> {{ resultado.datos[1] }}<br>
@@ -115,33 +125,31 @@ HTML_PORTAL = '''<!DOCTYPE html><html><head>
     </div>
 </div></body></html>'''
 
-# --- VISTA: LOGIN ---
 HTML_LOGIN = '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Login</title><style>''' + CSS_FINAL + '''</style></head><body>
-<div class="container" style="max-width:400px; margin-top:60px;">
-    <img src="''' + LOGO_URL + '''" class="logo-main">
+<div class="container" style="max-width:400px; margin-top:80px;">
+    <img src="{{ logo_url }}" class="logo-main">
     <div class="card" style="text-align:center;">
-        <h3>Panel Admin</h3>
+        <h3 style="margin-top:0;">Panel Admin</h3>
         <form method="POST">
-            <input type="password" name="password" placeholder="Contraseña" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; margin-bottom:15px;" required autofocus>
+            <input type="password" name="password" placeholder="Contraseña" style="width:100%; padding:15px; border:1px solid #ddd; border-radius:10px; margin-bottom:20px;" required autofocus>
             <button type="submit" class="btn btn-primary" style="width:100%;">ENTRAR</button>
         </form>
         <a href="/" class="btn btn-light" style="width:100%; margin-top:15px;">🔍 Verificador Público</a>
     </div>
 </div></body></html>'''
 
-# --- VISTA: ADMIN ---
 HTML_ADMIN = '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin</title><style>''' + CSS_FINAL + '''</style></head><body>
 <div class="container">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <img src="''' + LOGO_URL + '''" height="40">
-            <h2 style="margin:0;">Pagos Recibidos</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; flex-wrap:wrap; gap:15px;">
+        <div style="display:flex; align-items:center; gap:15px;">
+            <img src="{{ logo_url }}" height="50">
+            <h2 style="margin:0;">Control de Pagos</h2>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <a href="/" class="btn btn-light">🔍 Verificador</a>
             <a href="/admin/exportar" class="btn btn-primary" style="background:#28a745;">📊 Excel</a>
             <a href="/logout" class="btn btn-danger">Cerrar</a>
@@ -149,10 +157,10 @@ HTML_ADMIN = '''<!DOCTYPE html><html><head>
     </div>
     <div class="table-wrapper">
         <table>
-            <thead><tr><th>Recibido</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acción</th></tr></thead>
+            <thead><tr><th>Fecha / Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acción</th></tr></thead>
             <tbody>{% for p in pagos %}
             <tr>
-                <td>{{p[1]}}<br><small style="color:#777;">{{p[2]}}</small></td>
+                <td>{{p[1]}}<br><small style="color:#888;">{{p[2]}}</small></td>
                 <td><span class="badge badge-{{p[9]|lower}}">{{p[9]}}</span></td>
                 <td>{{p[3]}}</td>
                 <td style="font-weight:bold;">{% if p[9] == 'BINANCE' %}$ {{p[4]}}{% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}{{p[4]}} COP{% else %}Bs. {{p[4]}}{% endif %}</td>
@@ -161,29 +169,29 @@ HTML_ADMIN = '''<!DOCTYPE html><html><head>
                 <td>{% if p[7] == 'CANJEADO' %}
                     <form method="POST" action="/admin/liberar" style="display:flex; gap:3px;">
                         <input type="hidden" name="ref" value="{{p[5]}}">
-                        <input type="password" name="pw" placeholder="PIN" style="width:45px; border:1px solid #ddd;" required>
-                        <button type="submit" class="btn btn-warning" style="padding:5px 8px; font-size:10px;">Liberar</button>
+                        <input type="password" name="pw" placeholder="PIN" style="width:45px; border:1px solid #ddd; border-radius:4px;" required>
+                        <button type="submit" class="btn btn-warning" style="padding:5px 10px; font-size:10px;">Liberar</button>
                     </form>{% endif %}
                 </td>
             </tr>{% endfor %}</tbody>
         </table>
     </div>
-    <div class="grid-totales" style="margin-top:20px;">
-        <div class="total-item" style="background:var(--primary);"><small>BOLÍVARES</small><br><b>Bs. {{ totales.bs }}</b></div>
-        <div class="total-item" style="background:#f3ba2f; color:#000;"><small>USDT BINANCE</small><br><b>$ {{ totales.usd }}</b></div>
-        <div class="total-item" style="background:#e91e63;"><small>COLOMBIA (COP)</small><br><b>{{ totales.cop }}</b></div>
+    <div class="grid-totales">
+        <div class="total-item" style="background:var(--primary);"><small>BOLÍVARES</small><br><b style="font-size:24px;">Bs. {{ totales.bs }}</b></div>
+        <div class="total-item" style="background:#f3ba2f; color:#000;"><small>USDT BINANCE</small><br><b style="font-size:24px;">$ {{ totales.usd }}</b></div>
+        <div class="total-item" style="background:#e91e63;"><small>COLOMBIA (COP)</small><br><b style="font-size:24px;">{{ totales.cop }}</b></div>
     </div>
 </div></body></html>'''
 
 # --- RUTAS ---
 @app.route('/')
-def index(): return render_template_string(HTML_PORTAL)
+def index(): return render_portal()
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST' and request.form.get('password') == os.getenv("ADMIN_PASSWORD", "admin123"):
         session['logged_in'] = True; return redirect(url_for('admin'))
-    return render_template_string(HTML_LOGIN)
+    return render_login()
 
 @app.route('/admin')
 def admin():
@@ -200,7 +208,7 @@ def admin():
             else: t_bs += float(m.replace('.','').replace(',','.'))
         except: continue
     totales = {"bs": f"{t_bs:,.2f}", "usd": f"{t_usd:,.2f}", "cop": f"{t_cop:,.0f}"}
-    conn.close(); return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales)
+    conn.close(); return render_admin(pagos, totales)
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
@@ -212,8 +220,8 @@ def verificar():
     elif pago[3] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA CANJEADO", "datos": pago[1:]}
     else:
         cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (datetime.now().strftime("%d/%m %H:%M"), pago[0]))
-        conn.commit(); res = {"clase": "success", "mensaje": "✅ VÁLIDO", "datos": pago[1:]}
-    conn.close(); return render_template_string(HTML_PORTAL, resultado=res)
+        conn.commit(); res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO", "datos": pago[1:]}
+    conn.close(); return render_portal(resultado=res)
 
 @app.route('/admin/liberar', methods=['POST'])
 def liberar():
