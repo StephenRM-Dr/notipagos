@@ -22,6 +22,15 @@ def get_db_connection():
         port=os.getenv("DB_PORT", "5432"),
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
+# --- RUTA PARA CRON JOB (NUEVA) ---
+@app.route('/health')
+def health_check():
+    try:
+        conn = get_db_connection()
+        conn.close()
+        return "OK - Sistema Activo", 200
+    except Exception as e:
+        return f"Error: {str(e)}", 500
 
 # --- EXTRACTOR INTELIGENTE INTEGRAL ---
 def extractor_inteligente(texto):
