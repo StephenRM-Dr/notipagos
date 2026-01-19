@@ -12,8 +12,8 @@ load_dotenv(override=True)
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave_sistemas_mv_2026")
 
-# URL DIRECTA DEL LOGO (Corregida para Imgur)
-LOGO_URL = "https://imgur.com/31kbZvY" 
+# ENLACE DIRECTO AL LOGO (Extraído del álbum para que funcione en <img>)
+LOGO_URL = "https://i.imgur.com/vHq7FpL.png" 
 
 # --- BASE DE DATOS ---
 def get_db_connection():
@@ -26,7 +26,7 @@ def get_db_connection():
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
 
-# --- EXTRACTOR (Anti-Comisiones + Multibanco) ---
+# --- EXTRACTOR (Optimizado para ignorar comisiones) ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
@@ -43,61 +43,72 @@ def extractor_inteligente(texto):
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
         if re.search(key, texto_limpio, re.IGNORECASE):
-            if banco == "BDV":
-                m_emi = re.search(re_emi, texto_limpio, re.IGNORECASE); m_mon = re.search(re_mon, texto_limpio, re.IGNORECASE); m_ref = re.search(re_ref, texto_limpio, re.IGNORECASE)
-                if m_ref: pagos_detectados.append({"banco": banco, "emisor": m_emi.group(1) if m_emi else "S/D", "monto": m_mon.group(1) if m_mon else "0,00", "referencia": m_ref.group(1)})
-            else:
-                emisores = re.findall(re_emi, texto_limpio, re.IGNORECASE); montos = re.findall(re_mon, texto_limpio, re.IGNORECASE); refs = re.findall(re_ref, texto_limpio, re.IGNORECASE)
-                for i in range(len(refs)):
-                    actual_ref = refs[i] if not isinstance(refs[i], tuple) else next(x for x in refs[i] if x)
-                    pagos_detectados.append({"banco": banco, "emisor": emisores[i] if i < len(emisores) else "S/D", "monto": montos[i] if i < len(montos) else "0,00", "referencia": actual_ref})
+            m_emi = re.search(re_emi, texto_limpio, re.IGNORECASE)
+            m_mon = re.search(re_mon, texto_limpio, re.IGNORECASE)
+            m_ref = re.search(re_ref, texto_limpio, re.IGNORECASE)
+            if m_ref:
+                pagos_detectados.append({
+                    "banco": banco, 
+                    "emisor": m_emi.group(1) if m_emi else "S/D", 
+                    "monto": m_mon.group(1) if m_mon else "0,00", 
+                    "referencia": m_ref.group(1)
+                })
     return pagos_detectados
 
-# --- ESTILOS UNIFICADOS ---
+# --- CSS RESPONSIVO ---
 CSS_FINAL = '''
 :root { --primary: #004481; --secondary: #f4f7f9; --danger: #d9534f; --success: #28a745; --warning: #ffc107; }
-body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin: 0; }
-.container { max-width: 1200px; margin: auto; padding: 20px; }
-.logo-main { max-width: 200px; height: auto; margin-bottom: 20px; }
-.card { background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 25px; margin-bottom: 20px; border: 1px solid #eee; }
-.btn { border: none; border-radius: 8px; padding: 12px 20px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; transition: 0.2s; }
-.btn:hover { opacity: 0.9; }
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin: 0; padding: 0; }
+.container { width: 100%; max-width: 1200px; margin: auto; padding: 15px; }
+.logo-main { max-width: 180px; height: auto; display: block; margin: 0 auto 20px auto; }
+.card { background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; }
+.btn { border: none; border-radius: 8px; padding: 12px 18px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; justify-content: center; }
 .btn-primary { background: var(--primary); color: white; }
+.btn-light { background: #e0e0e0; color: #333; }
 .btn-danger { background: var(--danger); color: white; }
 .btn-warning { background: var(--warning); color: #333; }
-.btn-light { background: #e0e0e0; color: #333; }
-.badge { padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 11px; }
-.CANJEADO { background: #ffdce0; color: #af1f2c; }
-.LIBRE { background: #dcffe4; color: #1a7f37; }
-.badge-bdv { background: #ff000015; color: red; }
-.badge-binance { background: #f3ba2f30; color: #856404; }
-.grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
-.total-item { padding: 20px; border-radius: 12px; color: white; text-align: center; box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+
+/* Tabla Responsiva */
+.table-wrapper { overflow-x: auto; background: white; border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 700px; }
+th { background: #f8f9fa; padding: 12px; text-align: left; font-size: 11px; border-bottom: 2px solid #eee; text-transform: uppercase; }
+td { padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+
+/* Totales Responsivos */
+.grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+.total-item { padding: 20px; border-radius: 12px; color: white; text-align: center; }
+
+@media (max-width: 600px) {
+    .btn { width: 100%; }
+    .nav-header { flex-direction: column; gap: 10px; }
+    .logo-main { max-width: 140px; }
+}
 '''
 
 # --- VISTA: VERIFICADOR ---
-HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador</title><style>''' + CSS_FINAL + '''</style></head><body>
-<div class="container" style="max-width:480px; margin-top:40px;">
-    <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+HTML_PORTAL = '''<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verificador</title><style>''' + CSS_FINAL + '''</style></head><body>
+<div class="container" style="max-width:500px;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:20px;" class="nav-header">
         <a href="/" class="btn btn-light">🔄 Limpiar</a>
-        <a href="/admin" class="btn btn-primary">⚙️ Panel Admin</a>
+        <a href="/admin" class="btn btn-primary">⚙️ Acceso Admin</a>
     </div>
     <div class="card" style="text-align:center;">
-        <img src="''' + LOGO_URL + '''" class="logo-main" onerror="this.src='https://via.placeholder.com/200x80?text=LOGO+ERROR'">
-        <h2 style="color:var(--primary); margin-top:0;">Verificar Referencia</h2>
+        <img src="''' + LOGO_URL + '''" class="logo-main" alt="Logo">
+        <h2 style="color:var(--primary); margin-top:0;">Verificar Pago</h2>
         <form method="POST" action="/verificar">
-            <input type="text" name="ref" placeholder="Pegue la referencia aquí" style="width:100%; padding:18px; font-size:22px; border:2px solid #ddd; border-radius:12px; text-align:center; box-sizing:border-box; margin-bottom:20px;" required autocomplete="off" oninput="this.value = this.value.toUpperCase()">
-            <button type="submit" class="btn btn-primary" style="width:100%; padding:18px; font-size:18px; justify-content:center;">CONSULTAR PAGO</button>
+            <input type="text" name="ref" placeholder="Referencia de pago" style="width:100%; padding:15px; font-size:20px; border:2px solid #ddd; border-radius:10px; text-align:center; margin-bottom:15px;" required autocomplete="off" oninput="this.value = this.value.toUpperCase()">
+            <button type="submit" class="btn btn-primary" style="width:100%;">CONSULTAR</button>
         </form>
         {% if resultado %}
-        <div style="margin-top:25px; padding:20px; border-radius:12px; text-align:left;" class="{{ resultado.clase }}">
-            <h3 style="margin-top:0;">{{ resultado.mensaje }}</h3>
+        <div style="margin-top:20px; padding:15px; border-radius:10px; text-align:left;" class="{{ resultado.clase }}">
+            <h3 style="margin:0 0 10px 0;">{{ resultado.mensaje }}</h3>
             {% if resultado.datos %}
-            <div style="font-size:15px; line-height:1.6;">
-                <b>👤 Emisor:</b> {{ resultado.datos[0] }}<br>
+                <b>👤 De:</b> {{ resultado.datos[0] }}<br>
                 <b>💰 Monto:</b> {{ resultado.datos[1] }}<br>
-                <b>🔢 Referencia:</b> {{ resultado.datos[3] }}
-            </div>
+                <b>🔢 Ref:</b> {{ resultado.datos[3] }}
             {% endif %}
         </div>
         {% endif %}
@@ -105,58 +116,62 @@ HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador</title><style>'''
 </div></body></html>'''
 
 # --- VISTA: LOGIN ---
-HTML_LOGIN = '''<!DOCTYPE html><html><head><title>Login</title><style>''' + CSS_FINAL + '''</style></head><body>
-<div class="container" style="max-width:400px; margin-top:100px; text-align:center;">
-    <img src="''' + LOGO_URL + '''" class="logo-main" style="max-width:150px;">
-    <div class="card">
-        <h3>Acceso Administrativo</h3>
+HTML_LOGIN = '''<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login</title><style>''' + CSS_FINAL + '''</style></head><body>
+<div class="container" style="max-width:400px; margin-top:60px;">
+    <img src="''' + LOGO_URL + '''" class="logo-main">
+    <div class="card" style="text-align:center;">
+        <h3>Panel Admin</h3>
         <form method="POST">
-            <input type="password" name="password" placeholder="Clave de seguridad" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; box-sizing:border-box; margin-bottom:15px;" required autofocus>
-            <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">ENTRAR AL PANEL</button>
+            <input type="password" name="password" placeholder="Contraseña" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; margin-bottom:15px;" required autofocus>
+            <button type="submit" class="btn btn-primary" style="width:100%;">ENTRAR</button>
         </form>
-        <hr style="margin:20px 0; border:0; border-top:1px solid #eee;">
-        <a href="/" class="btn btn-light" style="width:100%; justify-content:center;">🔍 Volver al Verificador</a>
+        <a href="/" class="btn btn-light" style="width:100%; margin-top:15px;">🔍 Verificador Público</a>
     </div>
 </div></body></html>'''
 
 # --- VISTA: ADMIN ---
-HTML_ADMIN = '''<!DOCTYPE html><html><head><title>Admin</title><style>''' + CSS_FINAL + '''</style></head><body>
+HTML_ADMIN = '''<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title><style>''' + CSS_FINAL + '''</style></head><body>
 <div class="container">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; background:white; padding:15px; border-radius:12px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-        <div style="display:flex; align-items:center; gap:15px;"><img src="''' + LOGO_URL + '''" height="45"> <h2 style="margin:0;">Gestión de Pagos</h2></div>
-        <div style="display:flex; gap:10px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <img src="''' + LOGO_URL + '''" height="40">
+            <h2 style="margin:0;">Pagos Recibidos</h2>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <a href="/" class="btn btn-light">🔍 Verificador</a>
-            <a href="/admin/exportar" class="btn btn-primary" style="background:#28a745;">📊 Reporte Excel</a>
-            <a href="/logout" class="btn btn-danger">Cerrar Sesión</a>
+            <a href="/admin/exportar" class="btn btn-primary" style="background:#28a745;">📊 Excel</a>
+            <a href="/logout" class="btn btn-danger">Cerrar</a>
         </div>
     </div>
-    <div class="card" style="padding:0; overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse;">
-            <thead><tr style="background:#f8f9fa;">
-                <th style="padding:15px; text-align:left;">Fecha/Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acción</th>
-            </tr></thead>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Recibido</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acción</th></tr></thead>
             <tbody>{% for p in pagos %}
-            <tr style="border-bottom:1px solid #eee;">
-                <td style="padding:15px;">{{p[1]}}<br><small style="color:#888;">{{p[2]}}</small></td>
+            <tr>
+                <td>{{p[1]}}<br><small style="color:#777;">{{p[2]}}</small></td>
                 <td><span class="badge badge-{{p[9]|lower}}">{{p[9]}}</span></td>
                 <td>{{p[3]}}</td>
                 <td style="font-weight:bold;">{% if p[9] == 'BINANCE' %}$ {{p[4]}}{% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}{{p[4]}} COP{% else %}Bs. {{p[4]}}{% endif %}</td>
                 <td><code>{{p[5]}}</code></td>
-                <td><span class="badge {{p[7]}}">{{p[7]}}</span>{% if p[8] %}<br><small style="font-size:9px;">{{p[8]}}</small>{% endif %}</td>
+                <td><span class="badge {{p[7]}}">{{p[7]}}</span><br><small style="font-size:9px;">{{p[8] if p[8] else ''}}</small></td>
                 <td>{% if p[7] == 'CANJEADO' %}
                     <form method="POST" action="/admin/liberar" style="display:flex; gap:3px;">
                         <input type="hidden" name="ref" value="{{p[5]}}">
-                        <input type="password" name="pw" placeholder="PIN" style="width:45px; border:1px solid #ddd; border-radius:4px;" required>
-                        <button type="submit" class="btn btn-warning" style="padding:4px 8px; font-size:10px;">Liberar</button>
+                        <input type="password" name="pw" placeholder="PIN" style="width:45px; border:1px solid #ddd;" required>
+                        <button type="submit" class="btn btn-warning" style="padding:5px 8px; font-size:10px;">Liberar</button>
                     </form>{% endif %}
                 </td>
             </tr>{% endfor %}</tbody>
         </table>
     </div>
-    <div class="grid-totales">
-        <div class="total-item" style="background:var(--primary);"><small>BOLÍVARES</small><br><b style="font-size:22px;">Bs. {{ totales.bs }}</b></div>
-        <div class="total-item" style="background:#f3ba2f; color:#000;"><small>USDT BINANCE</small><br><b style="font-size:22px;">$ {{ totales.usd }}</b></div>
-        <div class="total-item" style="background:#e91e63;"><small>COLOMBIA (COP)</small><br><b style="font-size:22px;">{{ totales.cop }}</b></div>
+    <div class="grid-totales" style="margin-top:20px;">
+        <div class="total-item" style="background:var(--primary);"><small>BOLÍVARES</small><br><b>Bs. {{ totales.bs }}</b></div>
+        <div class="total-item" style="background:#f3ba2f; color:#000;"><small>USDT BINANCE</small><br><b>$ {{ totales.usd }}</b></div>
+        <div class="total-item" style="background:#e91e63;"><small>COLOMBIA (COP)</small><br><b>{{ totales.cop }}</b></div>
     </div>
 </div></body></html>'''
 
@@ -193,11 +208,11 @@ def verificar():
     conn = get_db_connection(); cursor = conn.cursor()
     cursor.execute("SELECT id, emisor, monto, estado, referencia FROM pagos WHERE referencia LIKE %s LIMIT 1", ('%' + ref,))
     pago = cursor.fetchone()
-    if not pago: res = {"clase": "danger", "mensaje": "❌ PAGO NO ENCONTRADO"}
-    elif pago[3] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA FUE RECLAMADO", "datos": pago[1:]}
+    if not pago: res = {"clase": "danger", "mensaje": "❌ NO ENCONTRADO"}
+    elif pago[3] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA CANJEADO", "datos": pago[1:]}
     else:
         cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (datetime.now().strftime("%d/%m %H:%M"), pago[0]))
-        conn.commit(); res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO", "datos": pago[1:]}
+        conn.commit(); res = {"clase": "success", "mensaje": "✅ VÁLIDO", "datos": pago[1:]}
     conn.close(); return render_template_string(HTML_PORTAL, resultado=res)
 
 @app.route('/admin/liberar', methods=['POST'])
