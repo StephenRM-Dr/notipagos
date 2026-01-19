@@ -75,7 +75,8 @@ def extractor_inteligente(texto):
         "BANESCO": (r"Banesco", r"de\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Recibo\s+(\d+)"),
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s?([\d.]+)", r"referencia\s?(\d+)"),
-        "BINANCE": (r"Binance", r"from\s+(.*?)\s+received", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)")
+        # Patrón Binance actualizado para formato inglés y español
+        "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)")
     }
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
@@ -92,17 +93,21 @@ def extractor_inteligente(texto):
                 pagos_detectados.append({
                     "banco": banco,
                     "emisor": emisores[i].strip() if i < len(emisores) else "Titular Desconocido",
-                    "monto": montos[i] if i < len(montos) else "0,00",
+                    "monto": montos[i] if i < len(montos) else "0.00",
                     "referencia": actual_ref
                 })
     
-    if not pagos_detectados:
-        ref_emergencia = re.findall(r"\d{8,}", texto_limpio)
-        if ref_emergencia:
+    # Buscador de emergencia para Binance sin ID (usa la fecha/hora como ref si no hay otra)
+    if not pagos_detectados and "Binance" in texto_limpio:
+        monto_bin = re.findall(r"([\d.]+)\s?USDT", texto_limpio)
+        if monto_bin:
             pagos_detectados.append({
-                "banco": "DESCONOCIDO", "emisor": "Revisar Notificación", 
-                "monto": "0,00", "referencia": ref_emergencia[0]
+                "banco": "BINANCE",
+                "emisor": "Revisar App",
+                "monto": monto_bin[0],
+                "referencia": re.findall(r"\d{4}-\d{2}-\d{2}", texto_limpio)[0].replace("-","") # Ref temporal
             })
+
     return pagos_detectados
 # --- ESTILOS CSS ---
 CSS_COMUN = '''
@@ -408,35 +413,32 @@ def admin():
     pagos = cursor.fetchall()
     
     # --- CÁLCULO DE TOTALES ---
+  # Totales con corrección de punto decimal
     t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
-    
     for p in pagos:
         try:
-            # Limpiamos el monto: "1.250,50" -> 1250.50
-            # Importante: p[4] es 'monto' y p[9] es 'banco'
-            valor_str = str(p[4]).replace('.', '').replace(',', '.')
-            valor = float(valor_str)
-            
-            banco = p[9] if len(p) > 9 else 'BDV' # Evita error si falta la columna banco
-            
+            monto_str = str(p[4])
+            banco = p[9]
+
             if banco == 'BINANCE':
+                # Binance usa punto decimal simple (45.50), NO quitamos el punto
+                valor = float(monto_str)
                 t_usd += valor
             elif banco in ['BANCOLOMBIA', 'NEQUI']:
+                # Pesos: Quitar puntos de miles si existen
+                valor = float(monto_str.replace('.', ''))
                 t_cop += valor
             else:
+                # Bolívares: Formato 1.250,50 -> Quitar punto, cambiar coma por punto
+                valor = float(monto_str.replace('.', '').replace(',', '.'))
                 t_bs += valor
-        except (ValueError, IndexError, TypeError):
-            continue # Salta registros con montos mal formados
-
-    # --- FORMATEO PARA EL PANEL ---
-    # Usamos un formateo manual para asegurar que Bs y COP se vean según la costumbre local
-    def formato_moneda(n, decimales=2):
-        return f"{n:,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except:
+            pass
 
     totales = {
-        "bs": formato_moneda(t_bs),
-        "usd": f"{t_usd:,.2f}", # Formato americano para dólares
-        "cop": formato_moneda(t_cop, 0) # Pesos colombianos sin decimales
+        "bs": f"{t_bs:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+        "usd": f"{t_usd:,.2f}",
+        "cop": f"{t_cop:,.0f}".replace(",", ".")
     }
     
     cursor.close()
