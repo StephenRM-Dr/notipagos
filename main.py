@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 app = Flask(__name__)
-# Prioriza la clave del .env, si no existe usa la de respaldo
 app.secret_key = os.getenv("SECRET_KEY", "clave_sistemas_mv_2026")
 
 # Seguridad de sesión
@@ -24,7 +23,6 @@ app.config.update(
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 def get_db_connection():
-    load_dotenv(override=True)
     return psycopg2.connect(
         host=os.getenv("DB_HOST"),
         database=os.getenv("DB_NAME"),
@@ -38,6 +36,7 @@ def get_db_connection():
 def inicializar_db():
     try:
         conn = get_db_connection(); cursor = conn.cursor()
+        # Creamos la tabla con la columna 'banco' incluida
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pagos (
                 id SERIAL PRIMARY KEY,
@@ -48,37 +47,44 @@ def inicializar_db():
                 referencia VARCHAR(100) UNIQUE, 
                 mensaje_completo TEXT,
                 estado VARCHAR(20) DEFAULT 'LIBRE',
-                fecha_canje TEXT
+                fecha_canje TEXT,
+                banco VARCHAR(50) DEFAULT 'BDV'
             )
+        ''')
+        # Por si la tabla ya existía pero no tenía la columna banco
+        cursor.execute('''
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pagos' AND column_name='banco') THEN
+                    ALTER TABLE pagos ADD COLUMN banco VARCHAR(50) DEFAULT 'BDV';
+                END IF;
+            END $$;
         ''')
         conn.commit(); cursor.close(); conn.close()
         print("✅ Base de Datos operativa y lista.")
     except Exception as e: print(f"❌ Error DB: {e}")
 
-# --- NUEVA LÓGICA DE EXTRACCIÓN MULTI-BANCO ---
+# --- LÓGICA DE EXTRACCIÓN MULTIBANCO ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
-    # Patrones ajustados fielmente a tus capturas de pantalla
     patrones = {
         "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"R\.\.\.\s?(\d+)|Ref\.\s?(\d+)"),
         "BANESCO": (r"Banesco", r"de\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Recibo\s+(\d+)"),
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s?([\d.]+)", r"referencia\s?(\d+)"),
-        "BINANCE": (r"Binance", r"from\s+(.*?)\s+received", r"([\d.]+)\s?USDT", r"ID:\s?(\d+)")
+        "BINANCE": (r"Binance", r"from\s+(.*?)\s+received", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)")
     }
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
         if re.search(key, texto_limpio, re.IGNORECASE):
             emisores = re.findall(re_emi, texto_limpio, re.IGNORECASE)
             montos = re.findall(re_mon, texto_limpio, re.IGNORECASE)
-            # Buscamos la referencia y extraemos el grupo que no sea nulo
             refs_raw = re.findall(re_ref, texto_limpio, re.IGNORECASE)
             
             for i in range(len(refs_raw)):
-                # Manejo de grupos múltiples en la regex de referencia
                 actual_ref = refs_raw[i]
                 if isinstance(actual_ref, tuple):
                     actual_ref = next((x for x in actual_ref if x), None)
@@ -90,17 +96,13 @@ def extractor_inteligente(texto):
                     "referencia": actual_ref
                 })
     
-    # Si no detectó nada por patrones, usamos el buscador de emergencia
     if not pagos_detectados:
         ref_emergencia = re.findall(r"\d{8,}", texto_limpio)
         if ref_emergencia:
             pagos_detectados.append({
-                "banco": "DESCONOCIDO",
-                "emisor": "Revisar Notificación",
-                "monto": "0,00",
-                "referencia": ref_emergencia[0]
+                "banco": "DESCONOCIDO", "emisor": "Revisar Notificación", 
+                "monto": "0,00", "referencia": ref_emergencia[0]
             })
-
     return pagos_detectados
 # --- ESTILOS CSS ---
 CSS_COMUN = '''
@@ -308,42 +310,28 @@ def webhook():
     try:
         raw_data = request.get_data(as_text=True)
         print(f"DEBUG Recibido: {raw_data}")
-        
-        # El extractor ahora devuelve una LISTA []
         lista_pagos = extractor_inteligente(raw_data)
         
-        if not lista_pagos:
-            return "No se detectaron pagos validos", 200
+        if not lista_pagos: return "No se detectaron pagos", 200
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        conn = get_db_connection(); cursor = conn.cursor()
         nuevos_registrados = 0
         for pago in lista_pagos:
-            # IMPORTANTE: Validamos que el pago tenga los datos mínimos
-            if not pago.get('referencia'):
-                continue
-
-            # Evitar duplicados
+            if not pago.get('referencia'): continue
             cursor.execute("SELECT 1 FROM pagos WHERE referencia = %s", (pago['referencia'],))
             if not cursor.fetchone():
                 cursor.execute(
-                    """INSERT INTO pagos (fecha, hora, emisor, monto, referencia, banco, estado) 
-                       VALUES (CURRENT_DATE, TO_CHAR(NOW(), 'HH12:MI AM'), %s, %s, %s, %s, 'PENDIENTE')""",
+                    """INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, banco, estado) 
+                       VALUES (TO_CHAR(CURRENT_DATE, 'DD/MM/YYYY'), TO_CHAR(NOW(), 'HH12:MI AM'), %s, %s, %s, %s, 'LIBRE')""",
                     (pago['emisor'], pago['monto'], pago['referencia'], pago['banco'])
                 )
                 nuevos_registrados += 1
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
+        conn.commit(); cursor.close(); conn.close()
         return f"OK: Procesados {nuevos_registrados} pagos", 200
-
     except Exception as e:
-        # Esto imprimirá el error exacto en los logs de Koyeb para que lo veamos
         print(f"Error en Webhook: {e}")
-        return f"Error interno: {str(e)}", 200 # Devolvemos 200 para que MacroDroid no reintente infinitamente
+        return f"Error: {str(e)}", 200
+
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
@@ -394,12 +382,10 @@ def verificar():
 @app.route('/admin')
 def admin():
     if not session.get('logged_in'): return redirect(url_for('login'))
-    
     query = request.args.get('q', '').strip()
     banco_sel = request.args.get('banco', '').strip()
     
     conn = get_db_connection(); cursor = conn.cursor()
-    
     sql = "SELECT * FROM pagos WHERE 1=1"
     params = []
     if query:
@@ -413,35 +399,17 @@ def admin():
     cursor.execute(sql, tuple(params))
     pagos = cursor.fetchall()
     
-    # --- NUEVA LÓGICA DE TOTALES SEPARADOS ---
-    t_bs = 0.0
-    t_usd = 0.0
-    t_cop = 0.0
-
+    # Totales
+    t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
     for p in pagos:
         try:
-            # Limpiamos el formato de moneda (ej: 1.250,50 -> 1250.50)
-            valor = float(p[4].replace('.', '').replace(',', '.'))
-            banco = p[9]
-            
-            if banco == 'BINANCE':
-                t_usd += valor
-            elif banco in ['BANCOLOMBIA', 'NEQUI']:
-                t_cop += valor
-            else:
-                t_bs += valor
-        except:
-            pass
+            val = float(p[4].replace('.', '').replace(',', '.'))
+            if p[9] == 'BINANCE': t_usd += val
+            elif p[9] in ['BANCOLOMBIA', 'NEQUI']: t_cop += val
+            else: t_bs += val
+        except: pass
 
-    # Formatear totales para el HTML
-    def fmt(n): return f"{n:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-    
-    totales = {
-        "bs": fmt(t_bs),
-        "usd": f"{t_usd:,.2f}",
-        "cop": f"{t_cop:,.0f}".replace(',', '.') # Pesos usualmente no llevan decimales
-    }
-    
+    totales = {"bs": f"{t_bs:,.2f}", "usd": f"{t_usd:,.2f}", "cop": f"{t_cop:,.0f}"}
     cursor.close(); conn.close()
     return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales, query=query, banco_sel=banco_sel)
 
