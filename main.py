@@ -71,12 +71,19 @@ def extractor_inteligente(texto):
     pagos_detectados = []
     
     patrones = {
-        "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"R\.\.\.\s?(\d+)|Ref\.\s?(\d+)"),
-        "BANESCO": (r"Banesco", r"de\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Recibo\s+(\d+)"),
+        # --- NUEVO: SOPORTE PARA SMS (BDV y BANESCO) ---
+        "BDV": (r"BDV", r"(?:desde el tlf|de)\s+(\d+)", r"por\s+([\d.]+,\d{2})\s+Bs", r"Ref:\s?(\d+)"),
+        "BANESCO": (r"Banesco", r"(?:de|desde)\s+(\d+)", r"Bs\.\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)"),
+        
+        # --- MANTIENE: NOTIFICACIONES DE BINANCE (Inglés y Español) ---
+        "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)"),
+        
+        # --- MANTIENE: NOTIFICACIONES DE COLOMBIA ---
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s?([\d.]+)", r"referencia\s?(\d+)"),
-        # Patrón Binance actualizado para formato inglés y español
-        "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)")
+        
+        # --- MANTIENE: NOTIFICACIONES APP PLAZA ---
+        "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Ref\.\s?(\d+)|R\.\.\.\s?(\d+)")
     }
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
@@ -92,20 +99,18 @@ def extractor_inteligente(texto):
 
                 pagos_detectados.append({
                     "banco": banco,
-                    "emisor": emisores[i].strip() if i < len(emisores) else "Titular Desconocido",
-                    "monto": montos[i] if i < len(montos) else "0.00",
+                    "emisor": emisores[i].strip() if i < len(emisores) else "Remitente Desconocido",
+                    "monto": montos[i] if i < len(montos) else "0,00",
                     "referencia": actual_ref
                 })
     
-    # Buscador de emergencia para Binance sin ID (usa la fecha/hora como ref si no hay otra)
-    if not pagos_detectados and "Binance" in texto_limpio:
-        monto_bin = re.findall(r"([\d.]+)\s?USDT", texto_limpio)
-        if monto_bin:
+    # Buscador de emergencia si detecta un ID largo pero no el banco
+    if not pagos_detectados:
+        ref_emergencia = re.findall(r"\d{8,}", texto_limpio)
+        if ref_emergencia:
             pagos_detectados.append({
-                "banco": "BINANCE",
-                "emisor": "Revisar App",
-                "monto": monto_bin[0],
-                "referencia": re.findall(r"\d{4}-\d{2}-\d{2}", texto_limpio)[0].replace("-","") # Ref temporal
+                "banco": "DESCONOCIDO", "emisor": "Revisar Texto", 
+                "monto": "0,00", "referencia": ref_emergencia[0]
             })
 
     return pagos_detectados
@@ -414,26 +419,28 @@ def admin():
     
     # --- CÁLCULO DE TOTALES ---
   # Totales con corrección de punto decimal
-    t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
-    for p in pagos:
-        try:
-            monto_str = str(p[4])
-            banco = p[9]
+# Dentro de la función admin()
+t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
 
-            if banco == 'BINANCE':
-                # Binance usa punto decimal simple (45.50), NO quitamos el punto
-                valor = float(monto_str)
-                t_usd += valor
-            elif banco in ['BANCOLOMBIA', 'NEQUI']:
-                # Pesos: Quitar puntos de miles si existen
-                valor = float(monto_str.replace('.', ''))
-                t_cop += valor
-            else:
-                # Bolívares: Formato 1.250,50 -> Quitar punto, cambiar coma por punto
-                valor = float(monto_str.replace('.', '').replace(',', '.'))
-                t_bs += valor
-        except:
-            pass
+for p in pagos:
+    try:
+        monto_raw = str(p[4]) # El valor guardado en la BD
+        banco = p[9]
+
+        if banco == 'BINANCE':
+            # Formato "45.50" -> Convertir directo a float
+            valor = float(monto_raw)
+            t_usd += valor
+        elif banco in ['BANCOLOMBIA', 'NEQUI']:
+            # Formato "50.000" -> Quitar punto de miles
+            valor = float(monto_raw.replace('.', ''))
+            t_cop += valor
+        else:
+            # Formato Bs "1.250,50" -> Quitar punto de mil, cambiar coma por punto
+            valor = float(monto_raw.replace('.', '').replace(',', '.'))
+            t_bs += valor
+    except:
+        continue
 
     totales = {
         "bs": f"{t_bs:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
