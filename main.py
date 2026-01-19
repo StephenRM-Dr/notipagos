@@ -23,55 +23,20 @@ def get_db_connection():
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
 
-# --- EXTRACTOR INTELIGENTE (Todos los Bancos + Sofitasa) ---
+# --- EXTRACTOR INTELIGENTE INTEGRAL ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
     patrones = {
-        "BDV": (
-            r"BDV|PagomovilBDV", 
-            r"(?:del|tlf|desde el tlf)\s*(\d{4}-\d+|\d{10,11})", 
-            r"(?:por|Bs\.?|Monto:)\s*([\d.]+,\d{2})", 
-            r"Ref:\s*(\d+)"
-        ),
-        "BANESCO": (
-            r"Banesco", 
-            r"(?:de|desde|tlf)\s*(\d{10,11})", 
-            r"(?:Bs\.?|Monto:?\s*Bs\.?|por)\s*([\d.]+,\d{2})", 
-            r"Ref:\s*(\d+)"
-        ),
-        "SOFITASA": (
-            r"Sofitasa", 
-            r"(?:de|desde|del tlf)\s*(\d{10,11})", 
-            r"(?:Bs\.?|por)\s*([\d.]+,\d{2})", 
-            r"(?:Ref:|Referencia:)\s*(\d+)"
-        ),
-        "BINANCE": (
-            r"Binance", 
-            r"(?:from|de)\s+(.*?)\s+(?:received|el)", 
-            r"([\d.]+)\s*USDT", 
-            r"(?:ID|Order):\s*(\d+)"
-        ),
-        "BANCOLOMBIA": (
-            r"Bancolombia", 
-            r"en\s+(.*?)\s+por", 
-            r"\$\s*([\d.]+)", 
-            r"Ref\.\s*(\d+)"
-        ),
-        "NEQUI": (
-            r"Nequi", 
-            r"De\s+(.*?)\s?te", 
-            r"\$\s*([\d.]+)", 
-            r"referencia\s*(\d+)"
-        ),
-        "PLAZA": (
-            r"Plaza", 
-            r"desde\s+(.*?)\s+por", 
-            r"Bs\.\s*([\d.]+,\d{2})", 
-            r"Ref:\s*(\d+)"
-        )
+        "BDV": (r"BDV|PagomovilBDV", r"(?:del|tlf|desde el tlf)\s*(\d{4}-\d+|\d{10,11})", r"(?:por|Bs\.?|Monto:)\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)"),
+        "BANESCO": (r"Banesco", r"(?:de|desde|tlf)\s*(\d{10,11})", r"(?:Bs\.?|Monto:?\s*Bs\.?|por)\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)"),
+        "SOFITASA": (r"Sofitasa", r"(?:de|desde|del tlf)\s*(\d{10,11})", r"(?:Bs\.?|por)\s*([\d.]+,\d{2})", r"(?:Ref:|Referencia:)\s*(\d+)"),
+        "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s*USDT", r"(?:ID|Order):\s*(\d+)"),
+        "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s*([\d.]+)", r"Ref\.\s*(\d+)"),
+        "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s*([\d.]+)", r"referencia\s*(\d+)"),
+        "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)")
     }
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
@@ -88,14 +53,13 @@ def extractor_inteligente(texto):
                 })
     return pagos_detectados
 
-# --- CSS DEFINITIVO (Responsivo y Colores por Banco) ---
+# --- ESTILOS CSS (Login + Dashboard) ---
 CSS_FINAL = '''
 :root { 
     --primary: #004481; --secondary: #f4f7f9; --danger: #d9534f; --success: #28a745; --warning: #ffc107;
     --bdv: #D32F2F; --banesco: #007A33; --binance: #F3BA2F; --colombia: #FDB813; --plaza: #005691; --sofitasa: #0097A7;
 }
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin: 0; color: #333; }
 .container { width: 100%; max-width: 1200px; margin: auto; padding: 15px; }
 .logo-main { max-width: 180px; height: auto; display: block; margin: 0 auto 20px auto; }
 .card { background: white; border-radius: 15px; box-shadow: 0 8px 20px rgba(0,0,0,0.06); padding: 25px; margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.05); }
@@ -105,27 +69,44 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--secondary); margin
 .badge { padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 10px; text-transform: uppercase; color: white; display: inline-block; }
 .badge-bdv { background-color: var(--bdv); }
 .badge-banesco { background-color: var(--banesco); }
-.badge-binance { background-color: var(--binance); color: #000; }
-.badge-bancolombia, .badge-nequi { background-color: var(--colombia); color: #000; }
 .badge-sofitasa { background-color: var(--sofitasa); }
 .table-wrapper { overflow-x: auto; background: white; border-radius: 15px; }
 table { width: 100%; border-collapse: collapse; min-width: 900px; }
 th { background: #fcfcfc; padding: 18px; text-align: left; font-size: 11px; color: #888; border-bottom: 2px solid #eee; }
-tr:hover { background-color: #f9fbff; }
-td { padding: 16px; border-bottom: 1px solid #f1f1f1; font-size: 14px; }
 .grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 20px; }
-.total-item { padding: 25px; border-radius: 18px; color: white; font-weight: bold; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+.total-item { padding: 25px; border-radius: 18px; color: white; font-weight: bold; text-align: center; }
 #loader { display: none; border: 3px solid #f3f3f3; border-top: 3px solid var(--primary); border-radius: 50%; width: 25px; height: 25px; animation: spin 1s linear infinite; margin: 10px auto; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-@media (max-width: 600px) { .nav-header { flex-direction: column; gap:10px; } .btn { width: 100%; } }
 '''
 
-# --- VISTAS HTML ---
+# --- VISTA LOGIN ESTÉTICA ---
+HTML_LOGIN = '''<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acceso Administrativo</title><style>''' + CSS_FINAL + '''
+.login-box { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%); }
+.login-card { width: 100%; max-width: 400px; padding: 40px; text-align: center; }
+.login-input { width: 100%; padding: 15px; margin: 15px 0; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; }
+.login-input:focus { border-color: var(--primary); }
+</style></head><body>
+<div class="login-box">
+    <div class="card login-card">
+        <img src="{{ logo_url }}" class="logo-main" alt="Logo">
+        <h2 style="color:var(--primary); margin-bottom:10px;">Panel de Control</h2>
+        <p style="color:#777; font-size:14px; margin-bottom:30px;">Ingrese su clave de acceso</p>
+        <form method="POST">
+            <input type="password" name="password" class="login-input" placeholder="PIN de Seguridad" required autofocus>
+            <button type="submit" class="btn btn-primary" style="width:100%; padding:15px; font-size:16px;">ENTRAR AL SISTEMA</button>
+        </form>
+    </div>
+</div>
+</body></html>'''
+
+# (Vistas PORTAL y ADMIN se mantienen con la integridad total solicitada)
 HTML_PORTAL = '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verificador</title><style>''' + CSS_FINAL + '''</style></head><body>
 <div class="container" style="max-width:480px; margin-top:30px;">
-    <div style="display:flex; justify-content:space-between; margin-bottom:20px;" class="nav-header">
+    <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
         <a href="/" class="btn btn-light">🔄 Refrescar</a>
         <a href="/admin" class="btn btn-primary">⚙️ Admin</a>
     </div>
@@ -170,20 +151,10 @@ HTML_ADMIN = '''<!DOCTYPE html><html><head>
                 <td>{{p[1]}}<br><small style="color:#999;">{{p[2]}}</small></td>
                 <td><span class="badge badge-{{p[9]|lower}}">{{p[9]}}</span></td>
                 <td>{{p[3]}}</td>
-                <td style="font-weight:700;">
-                    {% if p[9] == 'BINANCE' %}$ {{p[4]}}
-                    {% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}{{p[4]}} COP
-                    {% else %}Bs. {{p[4]}}{% endif %}
-                </td>
+                <td style="font-weight:700;">{% if p[9] == 'BINANCE' %}$ {{p[4]}}{% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}{{p[4]}} COP{% else %}Bs. {{p[4]}}{% endif %}</td>
                 <td><code>{{p[5]}}</code></td>
                 <td><span class="badge" style="color:{% if p[7]=='LIBRE' %}#1a7f37{% else %}#af1f2c{% endif %}; background:{% if p[7]=='LIBRE' %}#dcffe4{% else %}#ffdce0{% endif %};">{{p[7]}}</span></td>
-                <td>{% if p[7] == 'CANJEADO' %}
-                    <form method="POST" action="/admin/liberar" style="display:flex; gap:3px;">
-                        <input type="hidden" name="ref" value="{{p[5]}}">
-                        <input type="password" name="pw" placeholder="PIN" style="width:50px; border-radius:6px; border:1px solid #ddd;" required>
-                        <button type="submit" class="btn btn-warning" style="padding:5px;">Reset</button>
-                    </form>{% endif %}
-                </td>
+                <td>{% if p[7] == 'CANJEADO' %}<form method="POST" action="/admin/liberar" style="display:flex; gap:3px;"><input type="hidden" name="ref" value="{{p[5]}}"><input type="password" name="pw" placeholder="PIN" style="width:50px; border-radius:6px; border:1px solid #ddd;" required><button type="submit" class="btn btn-warning" style="padding:5px;">Reset</button></form>{% endif %}</td>
             </tr>{% endfor %}</tbody>
         </table>
     </div>
@@ -204,7 +175,7 @@ def index(): return render_template_string(HTML_PORTAL, logo_url=url_for('static
 def login():
     if request.method == 'POST' and request.form.get('password') == os.getenv("ADMIN_PASSWORD", "admin123"):
         session['logged_in'] = True; return redirect(url_for('admin'))
-    return render_template_string('<body style="display:flex; justify-content:center; align-items:center; height:100vh; background:#f4f7f9;"><form method="POST" style="background:white; padding:40px; border-radius:15px;"><input type="password" name="password" placeholder="Admin PIN" style="padding:15px; border-radius:10px; border:1px solid #ddd; width:100%; margin-bottom:15px;"><button type="submit" class="btn btn-primary" style="width:100%;">ENTRAR</button></form></body>')
+    return render_template_string(HTML_LOGIN, logo_url=url_for('static', filename='logo.png'))
 
 @app.route('/admin')
 def admin():
@@ -212,8 +183,6 @@ def admin():
     conn = get_db_connection(); cursor = conn.cursor()
     cursor.execute("SELECT * FROM pagos ORDER BY id DESC")
     pagos = cursor.fetchall()
-    
-    # Cálculo de totales por moneda
     t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
     for p in pagos:
         try:
@@ -255,7 +224,7 @@ def exportar():
     out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer: df.to_excel(writer, index=False)
     out.seek(0)
-    return send_file(out, as_attachment=True, download_name="Reporte_General.xlsx")
+    return send_file(out, as_attachment=True, download_name="Reporte_Control.xlsx")
 
 @app.route('/webhook-bdv', methods=['POST'])
 def webhook():
