@@ -36,7 +36,6 @@ def get_db_connection():
 def inicializar_db():
     try:
         conn = get_db_connection(); cursor = conn.cursor()
-        # Creamos la tabla con la columna 'banco' incluida
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pagos (
                 id SERIAL PRIMARY KEY,
@@ -51,7 +50,6 @@ def inicializar_db():
                 banco VARCHAR(50) DEFAULT 'BDV'
             )
         ''')
-        # Por si la tabla ya existía pero no tenía la columna banco
         cursor.execute('''
             DO $$ 
             BEGIN 
@@ -61,29 +59,21 @@ def inicializar_db():
             END $$;
         ''')
         conn.commit(); cursor.close(); conn.close()
-        print("✅ Base de Datos operativa y lista.")
+        print("✅ Base de Datos operativa.")
     except Exception as e: print(f"❌ Error DB: {e}")
 
-# --- LÓGICA DE EXTRACCIÓN MULTIBANCO ---
+# --- LÓGICA DE EXTRACCIÓN UNIVERSAL (SMS + NOTIFICACIONES) ---
 def extractor_inteligente(texto):
-    # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
     patrones = {
-        # --- NUEVO: SOPORTE PARA SMS (BDV y BANESCO) ---
         "BDV": (r"BDV", r"(?:desde el tlf|de)\s+(\d+)", r"por\s+([\d.]+,\d{2})\s+Bs", r"Ref:\s?(\d+)"),
         "BANESCO": (r"Banesco", r"(?:de|desde)\s+(\d+)", r"Bs\.\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)"),
-        
-        # --- MANTIENE: NOTIFICACIONES DE BINANCE (Inglés y Español) ---
         "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)"),
-        
-        # --- MANTIENE: NOTIFICACIONES DE COLOMBIA ---
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s?([\d.]+)", r"referencia\s?(\d+)"),
-        
-        # --- MANTIENE: NOTIFICACIONES APP PLAZA ---
-        "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Ref\.\s?(\d+)|R\.\.\.\s?(\d+)")
+        "PLAZA": (r"Plaza", r"desde\s+(.*?)\s+por", r"Bs\.\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)|R\.\.\.\s?(\d+)")
     }
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
@@ -103,16 +93,6 @@ def extractor_inteligente(texto):
                     "monto": montos[i] if i < len(montos) else "0,00",
                     "referencia": actual_ref
                 })
-    
-    # Buscador de emergencia si detecta un ID largo pero no el banco
-    if not pagos_detectados:
-        ref_emergencia = re.findall(r"\d{8,}", texto_limpio)
-        if ref_emergencia:
-            pagos_detectados.append({
-                "banco": "DESCONOCIDO", "emisor": "Revisar Texto", 
-                "monto": "0,00", "referencia": ref_emergencia[0]
-            })
-
     return pagos_detectados
 # --- ESTILOS CSS ---
 CSS_COMUN = '''
@@ -157,347 +137,87 @@ td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
 .badge-desconocido { background: #6c757d; color: white; } /* Gris */
 '''
 
-# --- VISTAS HTML CORREGIDAS ---
-HTML_LOGIN = '''<!DOCTYPE html><html><head><title>Login Admin</title><style>''' + CSS_COMUN + '''body{display:flex;justify-content:center;align-items:center;height:100vh;background:linear-gradient(135deg, #004481 0%, #00b1ea 100%);}</style></head><body><div class="card" style="width:350px;text-align:center;"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"><h3 style="margin-top:0;">Acceso Administrativo</h3><form method="POST"><input type="password" name="password" placeholder="Clave de Seguridad" style="width:100%;padding:12px;margin-bottom:15px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;" required autofocus><button type="submit" class="btn btn-primary" style="width: 100%;">ENTRAR AL PANEL</button></form><br><a href="/" style="color:white; text-decoration:none; font-size:14px; opacity:0.8;">← Volver al Verificador</a></div></body></html>'''
+# --- VISTAS HTML ---
+HTML_LOGIN = '''<!DOCTYPE html><html><head><title>Login</title><style>''' + CSS_COMUN + '''body{display:flex;justify-content:center;align-items:center;height:100vh;background:#004481;}</style></head><body><div class="card" style="width:350px;text-align:center;"><h3>Acceso Administrativo</h3><form method="POST"><input type="password" name="password" placeholder="Clave" style="width:100%;padding:12px;margin-bottom:15px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;" required autofocus><button type="submit" class="btn btn-primary" style="width:100%;">ENTRAR</button></form></div></body></html>'''
+HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>''' + CSS_COMUN + '''</style></head><body><div class="wrapper"><div style="display:flex;justify-content:space-between;margin-bottom:20px;"><a href="/" class="btn" style="background:#ddd;">🔄 Limpiar</a><a href="/admin" class="btn btn-primary">⚙️ Admin</a></div><div class="card" style="text-align:center;"><h2>Verificar Referencia</h2><form method="POST" action="/verificar"><input type="text" name="ref" placeholder="Ej: 123456" style="width:100%;padding:15px;font-size:24px;border:2px solid #eee;border-radius:12px;text-align:center;margin-bottom:15px;box-sizing:border-box;" required autocomplete="off"><button type="submit" class="btn btn-primary" style="width:100%;padding:15px;font-size:18px;">CONSULTAR PAGO</button></form>{% if resultado %}<div style="margin-top:20px;padding:20px;border-radius:10px;" class="{{ resultado.clase }}"><h3>{{ resultado.mensaje }}</h3>{% if resultado.datos %}<b>Emisor:</b> {{ resultado.datos[0] }}<br><b>Monto:</b> {{ resultado.datos[1] }}<br><b>Ref:</b> {{ resultado.datos[3] }}{% endif %}</div>{% endif %}</div></div></body></html>'''
+HTML_ADMIN = '''<!DOCTYPE html><html><head><title>Admin Panel</title><style>''' + CSS_COMUN + '''</style></head><body><div class="container"><div class="header-admin" style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;"><h2>Gestión de Pagos</h2><div><a href="/admin/exportar" class="btn btn-success">Excel</a><a href="/logout" class="btn btn-danger">Salir</a></div></div><form method="GET" style="display:flex;gap:10px;margin:20px 0;"><input type="text" name="q" placeholder="Buscar..." class="btn" style="background:white;border:1px solid #ddd;flex-grow:1;" value="{{ query }}"><button type="submit" class="btn btn-primary">Filtrar</button></form><div class="table-container"><table><thead><tr><th>Fecha/Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th></tr></thead><tbody>{% for p in pagos %}<tr><td>{{p[1]}}<br><small>{{p[2]}}</small></td><td><span class="badge-banco badge-{{p[9]|lower}}">{{p[9]}}</span></td><td>{{p[3]}}</td><td style="font-weight:bold;">{{p[4]}}</td><td><code>{{p[5]}}</code></td><td><span class="badge {{p[7]}}">{{p[7]}}</span></td></tr>{% endfor %}</tbody></table></div><div class="resumen-grid"><div class="resumen-card"><small>TOTAL BS</small><b>Bs. {{ totales.bs }}</b></div><div class="resumen-card"><small>TOTAL BINANCE</small><b>$ {{ totales.usd }}</b></div><div class="resumen-card"><small>TOTAL COP</small><b>$ {{ totales.cop }}</b></div></div></div></body></html>'''
 
-HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador de Pagos</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>''' + CSS_COMUN + '''.wrapper{max-width:500px;margin:40px auto;padding:0 15px;}</style></head><body><div class="wrapper"><div style="display:flex;justify-content:space-between;margin-bottom:20px;"><a href="/" class="btn" style="background:#ddd; color:#333;">🔄 Limpiar</a><a href="/admin" class="btn btn-primary">⚙️ Acceso Admin</a></div><div class="card" style="text-align: center;"><img src="/static/logo.png" class="logo-img" onerror="this.style.display='none';"><h2>Verificar Referencia</h2><form method="POST" action="/verificar"><input type="text" name="ref" placeholder="Ej: 123456" style="width:100%;padding:15px;font-size:24px;border:2px solid #eee;border-radius:12px;text-align:center;margin-bottom:15px;box-sizing:border-box;" required autocomplete="off" inputmode="numeric"><button type="submit" class="btn btn-primary" style="width: 100%; font-size: 18px; padding: 15px;">CONSULTAR PAGO</button></form>{% if resultado %}<div style="margin-top:20px;padding:20px;border-radius:10px;text-align:left; border: 1px solid #ddd;" class="{{ resultado.clase }}"><h3>{{ resultado.mensaje }}</h3>{% if resultado.datos %}<b>👤 Emisor:</b> {{ resultado.datos[0] }}<br><b>💰 Monto:</b> Bs. {{ resultado.datos[1] }}<br><b>🔢 Ref:</b> {{ resultado.datos[3] }}{% endif %}</div><script>new Audio('/static/{{ "success.mp3" if resultado.clase == "success" else "error.mp3" }}').play().catch(e => console.log("Audio bloqueado por navegador"));</script>{% endif %}</div></div></body></html>'''
-
-HTML_ADMIN = '''<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Control | Verificador Multibanco</title>
-    <style>
-        ''' + CSS_COMUN + '''
-        .container { max-width: 1250px; margin: 20px auto; padding: 0 15px; }
-        .header-admin { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; }
-        
-        /* Filtros */
-        .filter-group { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .filter-input { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-        .search-main { flex-grow: 2; min-width: 250px; }
-        .select-banco { flex-grow: 1; min-width: 180px; background: white; cursor: pointer; }
-        
-        /* Estilos de tabla */
-        .table-container { background: white; border-radius: 12px; overflow-x: auto; border: 1px solid #eee; }
-        table { width: 100%; border-collapse: collapse; min-width: 900px; }
-        th { background: #f8f9fa; color: #555; font-size: 11px; text-transform: uppercase; padding: 15px; border-bottom: 2px solid #eee; text-align: left; }
-        td { padding: 12px 15px; font-size: 14px; border-bottom: 1px solid #f1f1f1; vertical-align: middle; }
-        
-        /* Badges de Bancos */
-        .badge-banco { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; display: inline-block; }
-        .badge-bdv { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-        .badge-banesco { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .badge-mercantil { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
-        .badge-plaza { background: #fff3e0; color: #ef6c00; border: 1px solid #ffe0b2; }
-        .badge-sofitasa { background: #f3e5f5; color: #7b1fa2; border: 1px solid #e1bee7; }
-        .badge-binance { background: #fffde7; color: #fbc02d; border: 1px solid #fbc02d; }
-        .badge-bancolombia { background: #eceff1; color: #455a64; border: 1px solid #cfd8dc; }
-        .badge-nequi { background: #fce4ec; color: #c2185b; border: 1px solid #f8bbd0; }
-        .badge-desconocido { background: #f5f5f5; color: #616161; }
-
-        /* Cuadrícula de Totales */
-        .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 25px; }
-        .resumen-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid var(--primary); }
-        .resumen-card small { display: block; color: #777; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
-        .resumen-card b { font-size: 22px; color: #333; font-family: 'Courier New', Courier, monospace; }
-        .card-bs { border-color: #c62828; }
-        .card-usd { border-color: #fbc02d; }
-        .card-cop { border-color: #c2185b; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header-admin">
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <img src="/static/logo.png" style="height: 45px;" onerror="this.style.display='none'">
-                <h2 style="margin:0; color: var(--primary);">Gestión de Pagos Multibanco</h2>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <a href="/" class="btn" style="background:#eee; color:#444;">🔍 Verificador</a>
-                <a href="/admin/exportar" class="btn btn-success">📊 Exportar Excel</a>
-                <a href="/logout" class="btn btn-danger">Cerrar Sesión</a>
-            </div>
-        </div>
-
-        <form method="GET" class="filter-group">
-            <input type="text" name="q" placeholder="Buscar por emisor o referencia..." 
-                   class="filter-input search-main" value="{{ query }}">
-            
-            <select name="banco" class="filter-input select-banco">
-                <option value="">🏦 Todas las plataformas</option>
-                <option value="BDV" {% if banco_sel == 'BDV' %}selected{% endif %}>Banco de Venezuela</option>
-                <option value="BANESCO" {% if banco_sel == 'BANESCO' %}selected{% endif %}>Banesco</option>
-                <option value="PLAZA" {% if banco_sel == 'PLAZA' %}selected{% endif %}>Banco Plaza</option>
-                <option value="SOFITASA" {% if banco_sel == 'SOFITASA' %}selected{% endif %}>Sofitasa</option>
-                <option value="BINANCE" {% if banco_sel == 'BINANCE' %}selected{% endif %}>Binance Pay</option>
-                <option value="BANCOLOMBIA" {% if banco_sel == 'BANCOLOMBIA' %}selected{% endif %}>Bancolombia</option>
-                <option value="NEQUI" {% if banco_sel == 'NEQUI' %}selected{% endif %}>Nequi</option>
-            </select>
-            
-            <button type="submit" class="btn btn-primary" style="min-width: 120px;">Filtrar</button>
-        </form>
-
-        <div class="card" style="padding: 0; overflow: hidden; border: none;">
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Fecha/Hora</th>
-                            <th>Entidad</th>
-                            <th>Emisor</th>
-                            <th>Monto</th>
-                            <th>Referencia</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in pagos %}
-                        <tr>
-                            <td>
-                                <b>{{p[1]}}</b><br>
-                                <small style="color: #888;">{{p[2]}}</small>
-                            </td>
-                            <td>
-                                <span class="badge-banco badge-{{ p[9]|lower if p[9] else 'desconocido' }}">
-                                    {{ p[9] if p[9] else 'BDV' }}
-                                </span>
-                            </td>
-                            <td>{{p[3]}}</td>
-                            <td style="font-weight: 700; color: var(--primary); font-size: 15px;">
-                                {% if p[9] == 'BINANCE' %} $ 
-                                {% elif p[9] in ['BANCOLOMBIA', 'NEQUI'] %} $ (COP) 
-                                {% else %} Bs. {% endif %}
-                                {{p[4]}}
-                            </td>
-                            <td><code>{{p[5]}}</code></td>
-                            <td>
-                                <span class="badge {{p[7]}}">{{p[7]}}</span>
-                                {% if p[8] %}<br><small style="font-size: 10px; color: #999;">{{p[8]}}</small>{% endif %}
-                            </td>
-                            <td>
-                                {% if p[7] == 'CANJEADO' %}
-                                <form method="POST" action="/admin/liberar" style="display:flex; gap:5px;">
-                                    <input type="hidden" name="ref" value="{{p[5]}}">
-                                    <input type="password" name="pw" placeholder="PIN" 
-                                           style="width:45px; padding:4px; border:1px solid #ddd; border-radius:4px;" required>
-                                    <button type="submit" class="btn" 
-                                            style="background:var(--warning); padding:4px 8px; font-size:10px; color:#333;">Reset</button>
-                                </form>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="resumen-grid">
-            <div class="resumen-card card-bs">
-                <small>ACUMULADO BOLÍVARES</small>
-                <b>Bs. {{ totales.bs }}</b>
-            </div>
-            <div class="resumen-card card-usd">
-                <small>ACUMULADO BINANCE (USDT)</small>
-                <b>$ {{ totales.usd }}</b>
-            </div>
-            <div class="resumen-card card-cop">
-                <small>ACUMULADO COLOMBIA (COP)</small>
-                <b>$ {{ totales.cop }}</b>
-            </div>
-        </div>
-    </div>
-</body>
-</html>'''
 # --- RUTAS ---
+@app.route('/')
+def index(): return render_template_string(HTML_PORTAL)
 
-# --- WEBHOOK ACTUALIZADO ---
 @app.route('/webhook-bdv', methods=['POST'])
 def webhook():
     try:
-        raw_data = request.get_data(as_text=True)
-        print(f"DEBUG Recibido: {raw_data}")
-        lista_pagos = extractor_inteligente(raw_data)
-        
-        if not lista_pagos: return "No se detectaron pagos", 200
-
+        raw_data = request.get_json(silent=True) or {"mensaje": request.get_data(as_text=True)}
+        texto = raw_data.get('mensaje', '')
+        lista_pagos = extractor_inteligente(texto)
+        if not lista_pagos: return "No detectado", 200
         conn = get_db_connection(); cursor = conn.cursor()
-        nuevos_registrados = 0
-        for pago in lista_pagos:
-            if not pago.get('referencia'): continue
-            cursor.execute("SELECT 1 FROM pagos WHERE referencia = %s", (pago['referencia'],))
+        for p in lista_pagos:
+            cursor.execute("SELECT 1 FROM pagos WHERE referencia = %s", (p['referencia'],))
             if not cursor.fetchone():
-                cursor.execute(
-                    """INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, banco, estado) 
-                       VALUES (TO_CHAR(CURRENT_DATE, 'DD/MM/YYYY'), TO_CHAR(NOW(), 'HH12:MI AM'), %s, %s, %s, %s, 'LIBRE')""",
-                    (pago['emisor'], pago['monto'], pago['referencia'], pago['banco'])
-                )
-                nuevos_registrados += 1
+                cursor.execute("INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, banco) VALUES (TO_CHAR(CURRENT_DATE, 'DD/MM/YYYY'), TO_CHAR(NOW(), 'HH12:MI AM'), %s, %s, %s, %s)", (p['emisor'], p['monto'], p['referencia'], p['banco']))
         conn.commit(); cursor.close(); conn.close()
-        return f"OK: Procesados {nuevos_registrados} pagos", 200
-    except Exception as e:
-        print(f"Error en Webhook: {e}")
-        return f"Error: {str(e)}", 200
-
+        return "OK", 200
+    except Exception as e: return str(e), 200
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
-    busqueda = request.form.get('ref', '').strip()
-    if len(busqueda) < 4: 
-        return render_template_string(HTML_PORTAL, resultado={"clase": "danger", "mensaje": "❌ Mínimo 4 dígitos"})
-    
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # 1. BUSCAR Y BLOQUEAR la fila (FOR UPDATE) para evitar que otra consulta la toque
-        # Buscamos la referencia exacta o que coincida con los últimos dígitos
-        cursor.execute("""
-            SELECT id, emisor, monto, estado, referencia 
-            FROM pagos 
-            WHERE referencia LIKE %s 
-            ORDER BY id DESC 
-            LIMIT 1 
-            FOR UPDATE
-        """, ('%' + busqueda,))
-        
-        pago = cursor.fetchone()
-        
-        if not pago:
-            res = {"clase": "danger", "mensaje": "❌ PAGO NO ENCONTRADO"}
-        elif pago[3] == 'CANJEADO':
-            res = {"clase": "warning", "mensaje": "⚠️ YA FUE USADO", "datos": [pago[1], pago[2], pago[3], pago[4]]}
-        else:
-            # 2. MARCAR COMO CANJEADO inmediatamente dentro de la misma transacción bloqueada
-            ahora = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
-            cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (ahora, pago[0]))
-            
-            # 3. GUARDAR CAMBIOS (COMMIT) y liberar el bloqueo
-            conn.commit()
-            res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO", "datos": [pago[1], pago[2], pago[3], pago[4]]}
-            
-        cursor.close()
-    except Exception as e:
-        if conn: conn.rollback() # Si algo falla, deshacer cambios
-        res = {"clase": "danger", "mensaje": f"❌ Error de Sistema: {e}"}
-    finally:
-        if conn: conn.close()
-        
-    return render_template_string(HTML_PORTAL, resultado=res)
+    ref = request.form.get('ref', '').strip()
+    conn = get_db_connection(); cursor = conn.cursor()
+    cursor.execute("SELECT id, emisor, monto, estado, referencia FROM pagos WHERE referencia LIKE %s LIMIT 1 FOR UPDATE", ('%' + ref,))
+    pago = cursor.fetchone()
+    if not pago: res = {"clase": "danger", "mensaje": "❌ NO ENCONTRADO"}
+    elif pago[3] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA USADO", "datos": pago[1:]}
+    else:
+        cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (datetime.now().strftime("%d/%m/%Y %H:%M"), pago[0]))
+        conn.commit(); res = {"clase": "success", "mensaje": "✅ VÁLIDO", "datos": pago[1:]}
+    conn.close(); return render_template_string(HTML_PORTAL, resultado=res)
 
 @app.route('/admin')
 def admin():
-    if not session.get('logged_in'): 
-        return redirect(url_for('login'))
-    
-    query = request.args.get('q', '').strip()
-    banco_sel = request.args.get('banco', '').strip()
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Base de la consulta
-    sql = "SELECT * FROM pagos WHERE 1=1"
-    params = []
-    
-    if query:
-        sql += " AND (emisor ILIKE %s OR referencia LIKE %s)"
-        params.extend([f"%{query}%", f"%{query}%"])
-    
-    if banco_sel:
-        sql += " AND banco = %s"
-        params.append(banco_sel)
-        
-    sql += " ORDER BY id DESC"
-    
-    cursor.execute(sql, tuple(params))
+    if not session.get('logged_in'): return redirect(url_for('login'))
+    q = request.args.get('q', '').strip()
+    conn = get_db_connection(); cursor = conn.cursor()
+    sql = "SELECT * FROM pagos WHERE emisor ILIKE %s OR referencia LIKE %s ORDER BY id DESC"
+    cursor.execute(sql, (f"%{q}%", f"%{q}%"))
     pagos = cursor.fetchall()
     
-    # --- CÁLCULO DE TOTALES ---
-  # Totales con corrección de punto decimal
-# Dentro de la función admin()
-t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
+    t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
+    for p in pagos:
+        try:
+            m_str, banco = str(p[4]), p[9]
+            if banco == 'BINANCE': t_usd += float(m_str)
+            elif banco in ['BANCOLOMBIA', 'NEQUI']: t_cop += float(m_str.replace('.', ''))
+            else: t_bs += float(m_str.replace('.', '').replace(',', '.'))
+        except: continue
 
-for p in pagos:
-    try:
-        monto_raw = str(p[4]) # El valor guardado en la BD
-        banco = p[9]
-
-        if banco == 'BINANCE':
-            # Formato "45.50" -> Convertir directo a float
-            valor = float(monto_raw)
-            t_usd += valor
-        elif banco in ['BANCOLOMBIA', 'NEQUI']:
-            # Formato "50.000" -> Quitar punto de miles
-            valor = float(monto_raw.replace('.', ''))
-            t_cop += valor
-        else:
-            # Formato Bs "1.250,50" -> Quitar punto de mil, cambiar coma por punto
-            valor = float(monto_raw.replace('.', '').replace(',', '.'))
-            t_bs += valor
-    except:
-        continue
-
-    totales = {
-        "bs": f"{t_bs:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-        "usd": f"{t_usd:,.2f}",
-        "cop": f"{t_cop:,.0f}".replace(",", ".")
-    }
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template_string(
-        HTML_ADMIN, 
-        pagos=pagos, 
-        totales=totales, 
-        query=query, 
-        banco_sel=banco_sel
-    )
+    totales = {"bs": f"{t_bs:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), "usd": f"{t_usd:,.2f}", "cop": f"{t_cop:,.0f}"}
+    cursor.close(); conn.close()
+    return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales, query=q)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         if request.form.get('password') == os.getenv("ADMIN_PASSWORD", "admin123"):
-            session.clear(); session['logged_in'] = True
+            session['logged_in'] = True
             return redirect(url_for('admin'))
     return render_template_string(HTML_LOGIN)
 
 @app.route('/logout')
 def logout():
-    session.clear()
-    resp = make_response(redirect(url_for('login')))
-    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    return resp
+    session.clear(); return redirect(url_for('login'))
 
 @app.route('/admin/exportar')
 def exportar():
-    if not session.get('logged_in'): return redirect(url_for('login'))
     conn = get_db_connection(); cursor = conn.cursor()
-    cursor.execute("SELECT fecha_recepcion, emisor, monto, referencia, estado, fecha_canje FROM pagos ORDER BY id DESC")
-    df = pd.DataFrame(cursor.fetchall(), columns=['Fecha', 'Emisor', 'Monto', 'Ref', 'Estado', 'Canjeado'])
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False)
-    output.seek(0); cursor.close(); conn.close()
-    return send_file(output, as_attachment=True, download_name="Reporte_Pagos.xlsx")
-
-@app.route('/admin/liberar', methods=['POST'])
-def liberar():
-    if not session.get('logged_in'): return redirect(url_for('login'))
-    if request.form.get('pw') == os.getenv("ADMIN_PASSWORD"):
-        conn = get_db_connection(); cursor = conn.cursor()
-        cursor.execute("UPDATE pagos SET estado = 'LIBRE', fecha_canje = NULL WHERE referencia = %s", (request.form.get('ref'),))
-        conn.commit(); cursor.close(); conn.close()
-    return redirect(url_for('admin'))
-
-@app.route('/')
-def index(): return render_template_string(HTML_PORTAL)
+    cursor.execute("SELECT * FROM pagos")
+    df = pd.DataFrame(cursor.fetchall())
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine='openpyxl') as w: df.to_excel(w)
+    out.seek(0); return send_file(out, as_attachment=True, download_name="reporte.xlsx")
 
 if __name__ == '__main__':
     inicializar_db()
-    # Koyeb usa el puerto 5000 según tu configuración actual
     app.run(host='0.0.0.0', port=5000)
