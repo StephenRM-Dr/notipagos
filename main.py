@@ -63,17 +63,18 @@ def inicializar_db():
 
 # --- LÓGICA DE EXTRACCIÓN UNIVERSAL ---
 def extractor_inteligente(texto):
-    # El programa usa un limpiador de texto para normalizar espacios y saltos de línea
+    # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
-    # Patrones mejorados para detectar montos pegados (Bs.5.000) y formatos de comercio
+    # Patrones específicos para cada banco
     patrones = {
+        # BDV: Busca el monto inmediatamente después de 'por' y antes de 'del' o 'comision'
         "BDV": (
-            r"BDV|PagomovilBDV", # Detecta ambos formatos
-            r"(?:del|tlf)\s?(\d{4}-\d+)", # Emisor (teléfono)
-            r"Bs\.?\s?([\d.]+,\d{2})",   # Monto (soporta Bs.5000 y Bs. 5000)
-            r"Ref:\s?(\d+)"              # Referencia
+            r"BDV|PagomovilBDV", 
+            r"(?:del|tlf|de)\s+(\d{4}-\d+)", 
+            r"(?:por)\s+Bs\.?\s?([\d.]+,\d{2})", # Captura solo el monto tras la palabra "por"
+            r"Ref:\s?(\d+)"
         ),
         "BANESCO": (r"Banesco", r"(?:de|desde)\s+(\d+)", r"Bs\.\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)"),
         "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)"),
@@ -84,22 +85,36 @@ def extractor_inteligente(texto):
 
     for banco, (key, re_emi, re_mon, re_ref) in patrones.items():
         if re.search(key, texto_limpio, re.IGNORECASE):
-            # Extraer datos usando los regex mejorados
-            emisores = re.findall(re_emi, texto_limpio, re.IGNORECASE)
-            montos = re.findall(re_mon, texto_limpio, re.IGNORECASE)
-            refs_raw = re.findall(re_ref, texto_limpio, re.IGNORECASE)
-            
-            for i in range(len(refs_raw)):
-                actual_ref = refs_raw[i]
-                if isinstance(actual_ref, tuple):
-                    actual_ref = next((x for x in actual_ref if x), None)
+            # Usamos re.search para el monto en lugar de findall en BDV para tomar solo el primero (el pago)
+            if banco == "BDV":
+                emi_match = re.search(re_emi, texto_limpio, re.IGNORECASE)
+                mon_match = re.search(re_mon, texto_limpio, re.IGNORECASE)
+                ref_match = re.search(re_ref, texto_limpio, re.IGNORECASE)
+                
+                if ref_match:
+                    pagos_detectados.append({
+                        "banco": banco,
+                        "emisor": emi_match.group(1).strip() if emi_match else "Remitente Desconocido",
+                        "monto": mon_match.group(1) if mon_match else "0,00",
+                        "referencia": ref_match.group(1)
+                    })
+            else:
+                # Lógica normal para otros bancos
+                emisores = re.findall(re_emi, texto_limpio, re.IGNORECASE)
+                montos = re.findall(re_mon, texto_limpio, re.IGNORECASE)
+                refs_raw = re.findall(re_ref, texto_limpio, re.IGNORECASE)
+                
+                for i in range(len(refs_raw)):
+                    actual_ref = refs_raw[i]
+                    if isinstance(actual_ref, tuple):
+                        actual_ref = next((x for x in actual_ref if x), None)
 
-                pagos_detectados.append({
-                    "banco": banco,
-                    "emisor": emisores[i].strip() if i < len(emisores) else "Remitente Desconocido",
-                    "monto": montos[i] if i < len(montos) else "0,00",
-                    "referencia": actual_ref
-                })
+                    pagos_detectados.append({
+                        "banco": banco,
+                        "emisor": emisores[i].strip() if i < len(emisores) else "Remitente Desconocido",
+                        "monto": montos[i] if i < len(montos) else "0,00",
+                        "referencia": actual_ref
+                    })
     return pagos_detectados
 
 # --- ESTILOS CSS ---
