@@ -305,61 +305,45 @@ HTML_ADMIN = '''<!DOCTYPE html>
 # --- WEBHOOK ACTUALIZADO ---
 @app.route('/webhook-bdv', methods=['POST'])
 def webhook():
-    raw_data = request.get_data(as_text=True).strip()
-    
-    # Intento 1: Extraer mensaje mediante Regex (útil si MacroDroid envía JSON mal formado)
-    match = re.search(r'"mensaje":\s*"(.*)"', raw_data, re.DOTALL)
-    mensaje = match.group(1).replace('\\"', '"').replace('\"', '"') if match else None
-    
-    # Intento 2: JSON Estándar
-    if not mensaje:
-        try:
-            mensaje = json.loads(raw_data).get("mensaje", "")
-        except:
-            return jsonify({"status": "error_json"}), 200
-        
-    # Validaciones básicas
-    if not mensaje or "{not_text_big}" in mensaje or "[notificacion_text]" in mensaje:
-        return jsonify({"status": "ignored_empty"}), 200
-    
     try:
-        # Usar el nuevo extractor inteligente
-        datos = extractor_inteligente(mensaje)
+        raw_data = request.get_data(as_text=True)
+        print(f"DEBUG Recibido: {raw_data}")
         
-        if not datos['referencia']:
-            return jsonify({"status": "no_ref_detected"}), 200
+        # El extractor ahora devuelve una LISTA []
+        lista_pagos = extractor_inteligente(raw_data)
         
+        if not lista_pagos:
+            return "No se detectaron pagos validos", 200
+
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Insertar con la nueva columna 'banco'
-        cursor.execute("""
-            INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, mensaje_completo, banco) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s) 
-            ON CONFLICT (referencia) DO NOTHING
-        """, (
-            datetime.now().strftime("%d/%m/%Y"),
-            datetime.now().strftime("%I:%M %p"),
-            datos['emisor'],
-            datos['monto'],
-            datos['referencia'],
-            mensaje,
-            datos['banco']
-        ))
+        nuevos_registrados = 0
+        for pago in lista_pagos:
+            # IMPORTANTE: Validamos que el pago tenga los datos mínimos
+            if not pago.get('referencia'):
+                continue
+
+            # Evitar duplicados
+            cursor.execute("SELECT 1 FROM pagos WHERE referencia = %s", (pago['referencia'],))
+            if not cursor.fetchone():
+                cursor.execute(
+                    """INSERT INTO pagos (fecha, hora, emisor, monto, referencia, banco, estado) 
+                       VALUES (CURRENT_DATE, TO_CHAR(NOW(), 'HH12:MI AM'), %s, %s, %s, %s, 'PENDIENTE')""",
+                    (pago['emisor'], pago['monto'], pago['referencia'], pago['banco'])
+                )
+                nuevos_registrados += 1
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        return jsonify({
-            "status": "success", 
-            "banco": datos['banco'], 
-            "ref": datos['referencia']
-        }), 200
-        
+        return f"OK: Procesados {nuevos_registrados} pagos", 200
+
     except Exception as e:
+        # Esto imprimirá el error exacto en los logs de Koyeb para que lo veamos
         print(f"Error en Webhook: {e}")
-        return jsonify({"status": "error_db", "details": str(e)}), 200
+        return f"Error interno: {str(e)}", 200 # Devolvemos 200 para que MacroDroid no reintente infinitamente
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
