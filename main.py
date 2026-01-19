@@ -23,7 +23,7 @@ def get_db_connection():
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
 
-# --- EXTRACTOR MEJORADO (Basado en tus pruebas y mensaje real) ---
+# --- EXTRACTOR INTELIGENTE REFORZADO ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
@@ -33,10 +33,15 @@ def extractor_inteligente(texto):
         "BDV": (
             r"BDV|PagomovilBDV", 
             r"(?:del|tlf|desde el tlf)\s?(\d{4}-\d+|\d{11})", 
-            r"(?:por|por Bs\.|por Bs|por\s+)\s?([\d.]+,\d{2})", # Mejorado para capturar montos con/sin "Bs."
+            r"(?:por|por Bs\.|por Bs|por\s+)\s?([\d.]+,\d{2})",
             r"Ref:\s?(\d+)"
         ),
-        "BANESCO": (r"Banesco", r"(?:de|desde)\s+(\d+)", r"Bs\.\s?([\d.]+,\d{2})", r"Ref:\s?(\d+)"),
+        "BANESCO": (
+            r"Banesco", 
+            r"(?:de|desde|tlf)\s+(\d+)", 
+            r"(?:Bs\.|Bs|Monto: Bs\.|Monto: Bs)\s?([\d.]+,\d{2})", # Soporte multiformato Banesco
+            r"Ref:\s?(\d+)"
+        ),
         "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s?USDT", r"(?:ID|Order):\s?(\d+)"),
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s?([\d.]+)", r"Ref\.\s?(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s?([\d.]+)", r"referencia\s?(\d+)"),
@@ -49,17 +54,15 @@ def extractor_inteligente(texto):
             m_mon = re.search(re_mon, texto_limpio, re.IGNORECASE)
             m_ref = re.search(re_ref, texto_limpio, re.IGNORECASE)
             if m_ref:
-                # Limpieza de monto: si viene como 100,00 se guarda tal cual.
-                monto_final = m_mon.group(1) if m_mon else "0,00"
                 pagos_detectados.append({
                     "banco": banco, 
                     "emisor": m_emi.group(1) if m_emi else "S/D", 
-                    "monto": monto_final, 
+                    "monto": m_mon.group(1) if m_mon else "0,00", 
                     "referencia": m_ref.group(1)
                 })
     return pagos_detectados
 
-# --- CSS DEFINITIVO (Responsivo + Colores Bancos) ---
+# --- CSS (Integridad total: Colores, Responsividad, Spinner) ---
 CSS_FINAL = '''
 :root { 
     --primary: #004481; --secondary: #f4f7f9; --danger: #d9534f; --success: #28a745; --warning: #ffc107;
@@ -87,24 +90,24 @@ td { padding: 16px; border-bottom: 1px solid #f1f1f1; font-size: 14px; }
 #loader { display: none; border: 3px solid #f3f3f3; border-top: 3px solid var(--primary); border-radius: 50%; width: 25px; height: 25px; animation: spin 1s linear infinite; margin: 10px auto; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .grid-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
-.total-item { padding: 25px; border-radius: 18px; color: white; font-weight: bold; }
+.total-item { padding: 25px; border-radius: 18px; color: white; font-weight: bold; text-align: center; }
 @media (max-width: 600px) { .nav-header { flex-direction: column; gap:10px; } .btn { width: 100%; } }
 '''
 
-# --- VISTA: VERIFICADOR (Con Spinner + Sonidos) ---
+# --- VISTAS ---
 HTML_PORTAL = '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verificador</title><style>''' + CSS_FINAL + '''</style></head><body>
 <div class="container" style="max-width:480px; margin-top:30px;">
     <div style="display:flex; justify-content:space-between; margin-bottom:20px;" class="nav-header">
         <a href="/" class="btn btn-light">🔄 Refrescar</a>
-        <a href="/admin" class="btn btn-primary">⚙️ Panel Admin</a>
+        <a href="/admin" class="btn btn-primary">⚙️ Admin</a>
     </div>
     <div class="card" style="text-align:center;">
         <img src="{{ logo_url }}" class="logo-main" alt="Logo">
         <h2 style="color:var(--primary); margin-bottom:25px;">Verificar Pago</h2>
         <form id="verifyForm" method="POST" action="/verificar">
-            <input type="text" name="ref" id="refInput" placeholder="Ingrese Referencia" style="width:100%; padding:18px; font-size:20px; border:2px solid #eee; border-radius:12px; text-align:center; margin-bottom:20px;" required autocomplete="off" oninput="this.value = this.value.toUpperCase()">
+            <input type="text" name="ref" id="refInput" placeholder="Referencia" style="width:100%; padding:18px; font-size:20px; border:2px solid #eee; border-radius:12px; text-align:center; margin-bottom:20px;" required autocomplete="off" oninput="this.value = this.value.toUpperCase()">
             <button type="submit" class="btn btn-primary" style="width:100%; padding:18px; font-size:18px;">CONSULTAR</button>
         </form>
         <div id="loader"></div>
@@ -124,36 +127,35 @@ HTML_PORTAL = '''<!DOCTYPE html><html><head>
 <script>document.getElementById('verifyForm').onsubmit = function(){ document.getElementById('loader').style.display='block'; };</script>
 </body></html>'''
 
-# --- VISTA: ADMIN (Con Buscador + Colores de Bancos) ---
 HTML_ADMIN = '''<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin</title><style>''' + CSS_FINAL + '''</style></head><body>
 <div class="container">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; flex-wrap:wrap; gap:15px;">
-        <div style="display:flex; align-items:center; gap:15px;"><img src="{{ logo_url }}" height="55"> <h2 style="margin:0; font-weight:800;">CONTROL DE PAGOS</h2></div>
+        <div style="display:flex; align-items:center; gap:15px;"><img src="{{ logo_url }}" height="55"> <h2 style="margin:0; font-weight:800;">CONTROL</h2></div>
         <div style="display:flex; gap:10px;">
-            <a href="/" class="btn btn-light">🔍 Verificador</a>
+            <a href="/" class="btn btn-light">🔍 Volver</a>
             <a href="/admin/exportar" class="btn btn-primary" style="background:#28a745;">📊 Excel</a>
-            <a href="/logout" class="btn btn-danger">Cerrar</a>
+            <a href="/logout" class="btn btn-danger">Salir</a>
         </div>
     </div>
-    <div class="card" style="padding:15px;"><input type="text" id="adminSearch" class="btn-light" placeholder="🔍 Buscar pago..." onkeyup="filterTable()" style="width:100%; padding:15px; border-radius:10px; border:1px solid #ddd; outline:none; width:100%;"></div>
+    <div class="card" style="padding:15px;"><input type="text" id="adminSearch" placeholder="🔍 Buscar..." onkeyup="filterTable()" style="width:100%; padding:15px; border-radius:10px; border:1px solid #ddd; outline:none;"></div>
     <div class="table-wrapper card" style="padding:0;">
         <table id="paymentsTable">
-            <thead><tr><th>Fecha / Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>{% for p in pagos %}
             <tr>
                 <td>{{p[1]}}<br><small style="color:#999;">{{p[2]}}</small></td>
                 <td><span class="badge badge-{{p[9]|lower}}">{{p[9]}}</span></td>
                 <td>{{p[3]}}</td>
                 <td style="font-weight:700;">{% if p[9] == 'BINANCE' %}$ {{p[4]}}{% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}{{p[4]}} COP{% else %}Bs. {{p[4]}}{% endif %}</td>
-                <td><code style="background:#f4f4f4; padding:4px 8px; border-radius:5px;">{{p[5]}}</code></td>
+                <td><code>{{p[5]}}</code></td>
                 <td><span class="badge" style="color:{% if p[7]=='LIBRE' %}#1a7f37{% else %}#af1f2c{% endif %}; background:{% if p[7]=='LIBRE' %}#dcffe4{% else %}#ffdce0{% endif %};">{{p[7]}}</span></td>
                 <td>{% if p[7] == 'CANJEADO' %}
-                    <form method="POST" action="/admin/liberar" style="display:flex; gap:5px;">
+                    <form method="POST" action="/admin/liberar" style="display:flex; gap:3px;">
                         <input type="hidden" name="ref" value="{{p[5]}}">
-                        <input type="password" name="pw" placeholder="PIN" style="width:50px; border-radius:6px; border:1px solid #ddd;" required>
-                        <button type="submit" class="btn btn-warning" style="padding:6px;">Reset</button>
+                        <input type="password" name="pw" placeholder="PIN" style="width:45px; border-radius:6px; border:1px solid #ddd;" required>
+                        <button type="submit" class="btn btn-warning" style="padding:5px;">Liberar</button>
                     </form>{% endif %}
                 </td>
             </tr>{% endfor %}</tbody>
@@ -185,7 +187,7 @@ def index():
 def login():
     if request.method == 'POST' and request.form.get('password') == os.getenv("ADMIN_PASSWORD", "admin123"):
         session['logged_in'] = True; return redirect(url_for('admin'))
-    return render_template_string('<body style="background:#f4f7f9; display:flex; justify-content:center; align-items:center; height:100vh;"><div style="background:white; padding:40px; border-radius:15px; text-align:center;"><img src="{{logo}}" style="max-width:150px; margin-bottom:20px;"><form method="POST"><input type="password" name="password" placeholder="Clave Admin" style="width:100%; padding:15px; border-radius:10px; border:1px solid #ddd; margin-bottom:20px;"><button type="submit" style="width:100%; padding:15px; background:#004481; color:white; border:none; border-radius:10px;">ENTRAR</button></form><br><a href="/" style="text-decoration:none; color:#666;">🔍 Verificador</a></div></body>', logo=url_for('static', filename='logo.png'))
+    return render_template_string('<body style="background:#f4f7f9; display:flex; justify-content:center; align-items:center; height:100vh;"><div style="background:white; padding:40px; border-radius:15px; text-align:center;"><form method="POST"><input type="password" name="password" placeholder="Clave Admin" style="width:100%; padding:15px; border-radius:10px; border:1px solid #ddd; margin-bottom:20px;"><button type="submit" style="width:100%; padding:15px; background:#004481; color:white; border:none; border-radius:10px;">ENTRAR</button></form></div></body>')
 
 @app.route('/admin')
 def admin():
@@ -231,10 +233,10 @@ def exportar():
     conn = get_db_connection(); cursor = conn.cursor()
     cursor.execute("SELECT fecha_recepcion, banco, emisor, monto, referencia, estado FROM pagos")
     df = pd.DataFrame(cursor.fetchall(), columns=['Fecha', 'Banco', 'Emisor', 'Monto', 'Ref', 'Estado'])
-    out = BytesIO(); 
+    out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer: df.to_excel(writer, index=False)
     out.seek(0)
-    return send_file(out, as_attachment=True, download_name="Reporte.xlsx")
+    return send_file(out, as_attachment=True, download_name="Reporte_Banesco_Reforzado.xlsx")
 
 @app.route('/logout')
 def logout(): session.clear(); return redirect(url_for('login'))
