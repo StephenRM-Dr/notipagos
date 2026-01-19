@@ -61,9 +61,8 @@ def inicializar_db():
         conn.commit(); cursor.close(); conn.close()
     except Exception as e: print(f"❌ Error DB: {e}")
 
-# --- LÓGICA DE EXTRACCIÓN UNIVERSAL (SMS + NOTIFICACIONES) ---
+# --- LÓGICA DE EXTRACCIÓN UNIVERSAL ---
 def extractor_inteligente(texto):
-    # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
@@ -100,32 +99,31 @@ CSS_COMUN = '''
 :root { --primary: #004481; --secondary: #f4f7f9; --accent: #00b1ea; --danger: #d9534f; --success: #28a745; --warning: #ffc107; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--secondary); margin: 0; color: #333; line-height: 1.5; }
 .container { width: 100%; max-width: 1200px; margin: auto; padding: 20px; box-sizing: border-box; }
-.btn { border: none; border-radius: 8px; padding: 10px 20px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.btn { border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; transition: 0.3s; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .btn-primary { background: var(--primary); color: white; }
 .btn-success { background: var(--success); color: white; }
 .btn-danger { background: var(--danger); color: white; }
+.btn-warning { background: var(--warning); color: #333; }
 .card { background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); padding: 25px; margin-bottom: 25px; border: 1px solid #eee; }
 .table-container { overflow-x: auto; border-radius: 12px; border: 1px solid #eee; background: white; }
 table { width: 100%; border-collapse: collapse; min-width: 900px; }
-th { background: #f8f9fa; color: #555; padding: 15px; text-align: left; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #eee; }
-td { padding: 15px; border-bottom: 1px solid #f1f1f1; font-size: 14px; }
-.badge { padding: 5px 12px; border-radius: 50px; font-size: 11px; font-weight: bold; }
+th { background: #f8f9fa; color: #555; padding: 15px; text-align: left; font-size: 11px; text-transform: uppercase; border-bottom: 2px solid #eee; }
+td { padding: 12px 15px; border-bottom: 1px solid #f1f1f1; font-size: 13.5px; }
+.badge { padding: 5px 12px; border-radius: 50px; font-size: 10px; font-weight: bold; }
 .LIBRE { background: #e7f4e8; color: #2e7d32; }
 .CANJEADO { background: #fdecea; color: #c62828; }
 .badge-banco { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; }
 .badge-bdv { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-.badge-banesco { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
 .badge-binance { background: #fffde7; color: #856404; border: 1px solid #ffeeba; }
 .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 30px; }
 .resumen-card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 6px solid var(--primary); }
-.resumen-card small { display: block; color: #777; font-size: 12px; margin-bottom: 8px; font-weight: bold; }
 .resumen-card b { font-size: 24px; color: #333; font-family: 'Courier New', monospace; }
 '''
 
 # --- VISTAS HTML ---
 HTML_LOGIN = '''<!DOCTYPE html><html><head><title>Admin Login</title><style>''' + CSS_COMUN + '''body{display:flex;justify-content:center;align-items:center;height:100vh;background:var(--primary);}</style></head><body><div class="card" style="width:380px;text-align:center;"><h2>Panel Administrativo</h2><form method="POST"><input type="password" name="password" placeholder="Clave de seguridad" style="width:100%;padding:15px;margin-bottom:20px;border:1px solid #ddd;border-radius:10px;box-sizing:border-box;" required autofocus><button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">ENTRAR</button></form></div></body></html>'''
 HTML_PORTAL = '''<!DOCTYPE html><html><head><title>Verificador</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>''' + CSS_COMUN + '''</style></head><body><div class="container" style="max-width:500px;"><div style="display:flex;justify-content:space-between;margin-bottom:30px;"><a href="/" class="btn" style="background:#ddd;">🔄 Limpiar</a><a href="/admin" class="btn btn-primary">⚙️ Acceso Admin</a></div><div class="card" style="text-align:center;"><h2>Verificar Pago</h2><form method="POST" action="/verificar"><input type="text" name="ref" placeholder="Referencia" style="width:100%;padding:15px;font-size:24px;border:2px solid #eee;border-radius:12px;text-align:center;margin-bottom:20px;box-sizing:border-box;" required autocomplete="off"><button type="submit" class="btn btn-primary" style="width:100%;padding:18px;font-size:18px;justify-content:center;">CONSULTAR</button></form>{% if resultado %}<div style="margin-top:25px;padding:20px;border-radius:12px;text-align:left;border:1px solid #ddd;" class="{{ resultado.clase }}"><h3>{{ resultado.mensaje }}</h3>{% if resultado.datos %}<b>Emisor:</b> {{ resultado.datos[0] }}<br><b>Monto:</b> {{ resultado.datos[1] }}<br><b>Ref:</b> {{ resultado.datos[3] }}{% endif %}</div>{% endif %}</div></div></body></html>'''
-HTML_ADMIN = '''<!DOCTYPE html><html><head><title>Panel Admin</title><style>''' + CSS_COMUN + '''</style></head><body><div class="container"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;"><h2>Gestión de Pagos Multibanco</h2><div style="display:flex;gap:10px;"><a href="/admin/exportar" class="btn btn-success">📊 Excel</a><a href="/logout" class="btn btn-danger">Cerrar Sesión</a></div></div><div class="card"><form method="GET" style="display:flex;gap:15px;"><input type="text" name="q" placeholder="Buscar por emisor o referencia..." class="btn" style="background:white;border:1px solid #ddd;flex-grow:1;" value="{{ query }}"><button type="submit" class="btn btn-primary">🔍 Buscar</button></form></div><div class="table-container"><table><thead><tr><th>Fecha / Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th></tr></thead><tbody>{% for p in pagos %}<tr><td><b>{{p[1]}}</b><br><small style="color:#888;">{{p[2]}}</small></td><td><span class="badge-banco badge-{{p[9]|lower}}">{{p[9]}}</span></td><td>{{p[3]}}</td><td style="font-weight:bold; color:var(--primary);">{% if p[9] == 'BINANCE' %}$ {% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}$ (COP) {% else %}Bs. {% endif %}{{p[4]}}</td><td><code>{{p[5]}}</code></td><td><span class="badge {{p[7]}}">{{p[7]}}</span></td></tr>{% endfor %}</tbody></table></div><div class="resumen-grid"><div class="resumen-card" style="border-color:#c62828;"><small>ACUMULADO BOLÍVARES</small><b>Bs. {{ totales.bs }}</b></div><div class="resumen-card" style="border-color:#fbc02d;"><small>ACUMULADO BINANCE (USDT)</small><b>$ {{ totales.usd }}</b></div><div class="resumen-card" style="border-color:#c2185b;"><small>ACUMULADO COLOMBIA (COP)</small><b>$ {{ totales.cop }}</b></div></div></div></body></html>'''
+HTML_ADMIN = '''<!DOCTYPE html><html><head><title>Panel Admin</title><style>''' + CSS_COMUN + '''</style></head><body><div class="container"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;"><h2>Panel de Gestión</h2><div style="display:flex;gap:10px;"><a href="/" class="btn" style="background:#eee; color:#444;">🔍 Verificador</a><a href="/admin/exportar" class="btn btn-success">📊 Excel</a><a href="/logout" class="btn btn-danger">Cerrar Sesión</a></div></div><div class="card"><form method="GET" style="display:flex;gap:15px;"><input type="text" name="q" placeholder="Buscar por emisor o referencia..." class="btn" style="background:white;border:1px solid #ddd;flex-grow:1;" value="{{ query }}"><button type="submit" class="btn btn-primary">🔍 Buscar</button></form></div><div class="table-container"><table><thead><tr><th>Fecha / Hora</th><th>Banco</th><th>Emisor</th><th>Monto</th><th>Referencia</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{% for p in pagos %}<tr><td><b>{{p[1]}}</b><br><small style="color:#888;">{{p[2]}}</small></td><td><span class="badge-banco badge-{{p[9]|lower}}">{{p[9]}}</span></td><td>{{p[3]}}</td><td style="font-weight:bold; color:var(--primary);">{% if p[9] == 'BINANCE' %}$ {% elif p[9] in ['NEQUI','BANCOLOMBIA'] %}$ (COP) {% else %}Bs. {% endif %}{{p[4]}}</td><td><code>{{p[5]}}</code></td><td><span class="badge {{p[7]}}">{{p[7]}}</span><br><small style="font-size:9px;">{{p[8] if p[8] else ""}}</small></td><td>{% if p[7] == 'CANJEADO' %}<form method="POST" action="/admin/liberar" style="display:flex;gap:4px;"><input type="hidden" name="ref" value="{{p[5]}}"><input type="password" name="pw" placeholder="PIN" style="width:40px;padding:4px;border:1px solid #ddd;border-radius:4px;" required><button type="submit" class="btn btn-warning" style="padding:4px 8px; font-size:10px;">Reset</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div><div class="resumen-grid"><div class="resumen-card" style="border-color:#c62828;"><small>BOLÍVARES</small><b>Bs. {{ totales.bs }}</b></div><div class="resumen-card" style="border-color:#fbc02d;"><small>BINANCE (USDT)</small><b>$ {{ totales.usd }}</b></div><div class="resumen-card" style="border-color:#c2185b;"><small>COLOMBIA (COP)</small><b>$ {{ totales.cop }}</b></div></div></div></body></html>'''
 
 # --- RUTAS ---
 @app.route('/')
@@ -157,7 +155,7 @@ def verificar():
     elif pago[3] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA FUE USADO", "datos": pago[1:]}
     else:
         cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (datetime.now().strftime("%d/%m/%Y %H:%M"), pago[0]))
-        conn.commit(); res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO", "datos": pago[1:]}
+        conn.commit(); res = {"clase": "success", "mensaje": "✅ VÁLIDO", "datos": pago[1:]}
     conn.close(); return render_template_string(HTML_PORTAL, resultado=res)
 
 @app.route('/admin')
@@ -173,12 +171,9 @@ def admin():
     for p in pagos:
         try:
             m_str, banco = str(p[4]), p[9]
-            if banco == 'BINANCE': 
-                t_usd += float(m_str)
-            elif banco in ['BANCOLOMBIA', 'NEQUI']: 
-                t_cop += float(m_str.replace('.', ''))
-            else: 
-                t_bs += float(m_str.replace('.', '').replace(',', '.'))
+            if banco == 'BINANCE': t_usd += float(m_str)
+            elif banco in ['BANCOLOMBIA', 'NEQUI']: t_cop += float(m_str.replace('.', ''))
+            else: t_bs += float(m_str.replace('.', '').replace(',', '.'))
         except: continue
 
     totales = {
@@ -200,6 +195,15 @@ def login():
 @app.route('/logout')
 def logout():
     session.clear(); return redirect(url_for('login'))
+
+@app.route('/admin/liberar', methods=['POST'])
+def liberar():
+    if not session.get('logged_in'): return redirect(url_for('login'))
+    if request.form.get('pw') == os.getenv("ADMIN_PASSWORD"):
+        conn = get_db_connection(); cursor = conn.cursor()
+        cursor.execute("UPDATE pagos SET estado = 'LIBRE', fecha_canje = NULL WHERE referencia = %s", (request.form.get('ref'),))
+        conn.commit(); cursor.close(); conn.close()
+    return redirect(url_for('admin'))
 
 @app.route('/admin/exportar')
 def exportar():
