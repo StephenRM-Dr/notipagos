@@ -85,6 +85,9 @@ td { padding: 15px; border-bottom: 1px solid #f1f1f1; font-size: 13px; }
 .badge { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 10px; text-transform: uppercase; color: white; display: inline-block; }
 .badge-sofitasa { background-color: var(--sofitasa); }
 .badge-bdv { background-color: var(--bdv); }
+.badge { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 10px; text-transform: uppercase; color: white; display: inline-block; }
+.badge-banesco { background-color: var(--banesco); }
+.badge-binance { background-color: var(--binance); color: #000; }
 @media (max-width: 600px) { .nav-header { flex-direction: column; gap: 12px; text-align: center; } .actions { width: 100%; justify-content: center; gap: 5px; } .btn { flex: 1; font-size: 12px; } }
 '''
 
