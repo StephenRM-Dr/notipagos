@@ -334,18 +334,25 @@ def exportar():
 def webhook():
     try:
         raw_data = request.get_json(silent=True) or {"mensaje": request.get_data(as_text=True)}
-        lista_pagos = extractor_inteligente(str(raw_data.get('mensaje', '')))
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        texto_recibido = str(raw_data.get('mensaje', ''))
+        
+        # --- LÍNEA DE DIAGNÓSTICO (Mírala en los logs de Koyeb) ---
+        print(f"DEBUG: Texto recibido desde la notificación: {texto_recibido}")
+        
+        lista_pagos = extractor_inteligente(texto_recibido)
+        
+        if not lista_pagos:
+            print("DEBUG: El extractor no encontró patrones válidos en este texto.")
+            
+        conn = get_db_connection(); cursor = conn.cursor()
         for p in lista_pagos:
             cursor.execute("SELECT 1 FROM pagos WHERE referencia = %s", (p['referencia'],))
             if not cursor.fetchone():
                 cursor.execute("INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, banco) VALUES (%s, %s, %s, %s, %s, %s)", 
                                (datetime.now().strftime("%d/%m/%Y"), datetime.now().strftime("%I:%M %p"), p['emisor'], p['monto'], p['referencia'], p['banco']))
-        conn.commit()
-        conn.close()
-        return "OK", 200
-    except Exception as e:
+        conn.commit(); conn.close(); return "OK", 200
+    except Exception as e: 
+        print(f"DEBUG ERROR: {str(e)}")
         return str(e), 200
 
 @app.route('/logout')
