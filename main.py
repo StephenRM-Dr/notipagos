@@ -22,26 +22,40 @@ def get_db_connection():
         port=os.getenv("DB_PORT", "5432"),
         sslmode="require" if "neon.tech" in (os.getenv("DB_HOST") or "") else "disable"
     )
-# --- RUTA PARA CRON JOB (NUEVA) ---
+
+# --- RUTA PARA CRON JOB ---
 @app.route('/health')
 def health_check():
     try:
-        conn = get_db_connection()
-        conn.close()
+        conn = get_db_connection(); conn.close()
         return "OK - Sistema Activo", 200
-    except Exception as e:
-        return f"Error: {str(e)}", 500
+    except Exception as e: return f"Error: {str(e)}", 500
 
-# --- EXTRACTOR INTELIGENTE INTEGRAL ---
+# --- EXTRACTOR INTELIGENTE (Versión 2026 Optimizado) ---
 def extractor_inteligente(texto):
     # El programa usa un limpiador de texto
     texto_limpio = texto.replace('"', '').replace('\\n', ' ').replace('\n', ' ').strip()
     pagos_detectados = []
     
     patrones = {
-        "BDV": (r"BDV|PagomovilBDV", r"(?:del|tlf|desde el tlf)\s*(\d{4}-\d+|\d{10,11})", r"(?:por|Bs\.?|Monto:)\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)"),
-        "BANESCO": (r"Banesco", r"(?:de|desde|tlf)\s*(\d{10,11})", r"(?:Bs\.?|Monto:?\s*Bs\.?|por)\s*([\d.]+,\d{2})", r"Ref:\s*(\d+)"),
-        "SOFITASA": (r"SOFITASA", r"Telf\.(\d{4,11})", r"Bs\.?([\d.]+,\d{2})", r"Ref:(\d+)"),
+        "BDV": (
+            r"BDV|PagomovilBDV", 
+            r"(?:del|tlf|desde el tlf)\s*(\d{4}[- ]\d+|\d{10,11})", 
+            r"(?:por|Bs\.?|Monto:)\s*([\d.]+,\d{2})", 
+            r"Ref:\s*(\d+)"
+        ),
+        "BANESCO": (
+            r"Banesco", 
+            r"(?:de|desde|tlf)\s*(\d{10,11})", 
+            r"(?:Bs\.?|Monto:?\s*Bs\.?|por)\s*([\d.]+,\d{2})", 
+            r"Ref:\s*(\d+)"
+        ),
+        "SOFITASA": (
+            r"SOFITASA", 
+            r"Telf\.(\d{4,11}|\d{4}\*\*\*\d{4})", 
+            r"Bs\.?([\d.]+,\d{2})", 
+            r"Ref:(\d+)"
+        ),
         "BINANCE": (r"Binance", r"(?:from|de)\s+(.*?)\s+(?:received|el)", r"([\d.]+)\s*USDT", r"(?:ID|Order):\s*(\d+)"),
         "BANCOLOMBIA": (r"Bancolombia", r"en\s+(.*?)\s+por", r"\$\s*([\d.]+)", r"Ref\.\s*(\d+)"),
         "NEQUI": (r"Nequi", r"De\s+(.*?)\s?te", r"\$\s*([\d.]+)", r"referencia\s*(\d+)"),
@@ -251,28 +265,22 @@ function filterTable() {
 </script>
 </body></html>'''
 
-# --- LÓGICA DE RUTAS (INTEGRIDAD TOTAL) ---
-
+# --- RUTAS DE LA APP ---
 @app.route('/')
-def index():
-    return render_template_string(HTML_PORTAL, logo_url=url_for('static', filename='logo.png'))
+def index(): return render_template_string(HTML_PORTAL, logo_url=url_for('static', filename='logo.png'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        if request.form.get('password') == os.getenv("ADMIN_PASSWORD", "admin123"):
-            session['logged_in'] = True
-            return redirect(url_for('admin'))
+    if request.method == 'POST' and request.form.get('password') == os.getenv("ADMIN_PASSWORD", "admin123"):
+        session['logged_in'] = True; return redirect(url_for('admin'))
     return render_template_string(HTML_LOGIN, logo_url=url_for('static', filename='logo.png'))
 
 @app.route('/admin')
 def admin():
     if not session.get('logged_in'): return redirect(url_for('login'))
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = get_db_connection(); cursor = conn.cursor()
     cursor.execute("SELECT * FROM pagos ORDER BY id DESC")
     pagos = cursor.fetchall()
-    
     t_bs, t_usd, t_cop = 0.0, 0.0, 0.0
     for p in pagos:
         try:
@@ -281,69 +289,47 @@ def admin():
             elif b in ['NEQUI','BANCOLOMBIA']: t_cop += float(m.replace('.',''))
             else: t_bs += float(m.replace('.','').replace(',','.'))
         except: continue
-        
     totales = {"bs": f"{t_bs:,.2f}", "usd": f"{t_usd:,.2f}", "cop": f"{t_cop:,.0f}"}
-    conn.close()
-    return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales, logo_url=url_for('static', filename='logo.png'))
+    conn.close(); return render_template_string(HTML_ADMIN, pagos=pagos, totales=totales, logo_url=url_for('static', filename='logo.png'))
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
     ref = request.form.get('ref', '').strip()
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = get_db_connection(); cursor = conn.cursor()
     cursor.execute("SELECT id, emisor, monto, estado, referencia FROM pagos WHERE referencia LIKE %s LIMIT 1", ('%' + ref,))
     pago = cursor.fetchone()
-    
-    if not pago:
-        res = {"clase": "danger", "mensaje": "❌ REFERENCIA NO ENCONTRADA"}
-    elif pago[3] == 'CANJEADO':
-        res = {"clase": "warning", "mensaje": "⚠️ PAGO YA FUE CANJEADO", "datos": pago[1:]}
+    if not pago: res = {"clase": "danger", "mensaje": "❌ NO ENCONTRADO"}
+    elif pago[3] == 'CANJEADO': res = {"clase": "warning", "mensaje": "⚠️ YA CANJEADO", "datos": pago[1:]}
     else:
         cursor.execute("UPDATE pagos SET estado = 'CANJEADO', fecha_canje = %s WHERE id = %s", (datetime.now().strftime("%d/%m %H:%M"), pago[0]))
-        conn.commit()
-        res = {"clase": "success", "mensaje": "✅ PAGO VÁLIDO Y CANJEADO", "datos": pago[1:]}
-    
-    conn.close()
-    return render_template_string(HTML_PORTAL, resultado=res, logo_url=url_for('static', filename='logo.png'))
+        conn.commit(); res = {"clase": "success", "mensaje": "✅ VÁLIDO", "datos": pago[1:]}
+    conn.close(); return render_template_string(HTML_PORTAL, resultado=res, logo_url=url_for('static', filename='logo.png'))
 
 @app.route('/admin/liberar', methods=['POST'])
 def liberar():
     if session.get('logged_in') and request.form.get('pw') == os.getenv("ADMIN_PASSWORD"):
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        conn = get_db_connection(); cursor = conn.cursor()
         cursor.execute("UPDATE pagos SET estado = 'LIBRE', fecha_canje = NULL WHERE referencia = %s", (request.form.get('ref'),))
-        conn.commit()
-        conn.close()
+        conn.commit(); conn.close()
     return redirect(url_for('admin'))
 
 @app.route('/admin/exportar')
 def exportar():
     if not session.get('logged_in'): return redirect(url_for('login'))
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = get_db_connection(); cursor = conn.cursor()
     cursor.execute("SELECT fecha_recepcion, banco, emisor, monto, referencia, estado FROM pagos")
     df = pd.DataFrame(cursor.fetchall(), columns=['Fecha', 'Banco', 'Emisor', 'Monto', 'Ref', 'Estado'])
     out = BytesIO()
-    with pd.ExcelWriter(out, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
-    out.seek(0)
-    conn.close()
-    return send_file(out, as_attachment=True, download_name=f"Reporte_Pagos_{datetime.now().strftime('%Y%m%d')}.xlsx")
+    with pd.ExcelWriter(out, engine='openpyxl') as writer: df.to_excel(writer, index=False)
+    out.seek(0); conn.close()
+    return send_file(out, as_attachment=True, download_name="Reporte_Pagos.xlsx")
 
 @app.route('/webhook-bdv', methods=['POST'])
 def webhook():
     try:
         raw_data = request.get_json(silent=True) or {"mensaje": request.get_data(as_text=True)}
         texto_recibido = str(raw_data.get('mensaje', ''))
-        
-        # --- LÍNEA DE DIAGNÓSTICO (Mírala en los logs de Koyeb) ---
-        print(f"DEBUG: Texto recibido desde la notificación: {texto_recibido}")
-        
         lista_pagos = extractor_inteligente(texto_recibido)
-        
-        if not lista_pagos:
-            print("DEBUG: El extractor no encontró patrones válidos en este texto.")
-            
         conn = get_db_connection(); cursor = conn.cursor()
         for p in lista_pagos:
             cursor.execute("SELECT 1 FROM pagos WHERE referencia = %s", (p['referencia'],))
@@ -351,14 +337,10 @@ def webhook():
                 cursor.execute("INSERT INTO pagos (fecha_recepcion, hora_recepcion, emisor, monto, referencia, banco) VALUES (%s, %s, %s, %s, %s, %s)", 
                                (datetime.now().strftime("%d/%m/%Y"), datetime.now().strftime("%I:%M %p"), p['emisor'], p['monto'], p['referencia'], p['banco']))
         conn.commit(); conn.close(); return "OK", 200
-    except Exception as e: 
-        print(f"DEBUG ERROR: {str(e)}")
-        return str(e), 200
+    except Exception as e: return str(e), 200
 
 @app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
+def logout(): session.clear(); return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
