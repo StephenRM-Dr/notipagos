@@ -24,7 +24,7 @@ def get_db_connection():
     )
 
 # --- RUTA PARA CRON JOB ---
-@app.route('/health')
+@app.route('/health')       
 def health_check():
     try:
         conn = get_db_connection(); conn.close()
